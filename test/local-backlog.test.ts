@@ -47,7 +47,8 @@ test("local backlog lists report-*.md under docs/reports and still lists a root 
   expect(exit).toBe(0);
   const body = JSON.parse(stdout);
   const paths = body.reports.map((report: { path: string }) => report.path).sort();
-  expect(paths).toEqual(["docs/reports/report-abc.md", "report-root.md"]);
+  // Inventory keys keep the platform separator; do not hard-code `/` here.
+  expect(paths).toEqual([join("docs", "reports", "report-abc.md"), "report-root.md"].sort());
   // Report path keys stay aligned with inventory/receipts (no slash rewriting).
   for (const report of body.reports as { path: string; sha256: string }[]) {
    expect(body.files[report.path]).toBe(report.sha256);
