@@ -1427,9 +1427,12 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 			run(["mountvol", at + "\\", "/D"]);
 			points.delete(at);
 		},
-		/** Removes every mount point first: a recursive delete of the fixture must never reach the volume's files. */
-		done() {
-			// Keep going through unmount → detach → vhdx rm even when one step fails; surface every error.
+		/**
+		 * Removes every mount point first: a recursive delete of the fixture must never reach the volume's files.
+		 * Returns whether mounts are confirmed gone. Callers must not recursively delete a tree when this is false.
+		 */
+		done(): { mountsCleared: boolean; errors: Error[] } {
+			// Keep going across volumes even when one step fails; surface every error without erasing mount tracking.
 			const errors: Error[] = [];
 			const push = (error: unknown) => {
 				errors.push(error instanceof Error ? error : new Error(String(error)));
@@ -1469,9 +1472,11 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 					);
 				}
 			}
-			if (points.size) {
+			const mountsCleared = points.size === 0;
+			if (!mountsCleared) {
+				// Leave points intact so the remaining mounts and paths stay distinguishable.
 				push(Error(`mount points still tracked after teardown: ${[...points].join(", ")}`));
-				points.clear();
+				return { mountsCleared, errors };
 			}
 			// Detach is best-effort: a prior cleanup or failed attach can leave the VHD already detached (exit 87).
 			try {
@@ -1504,8 +1509,7 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 			} catch (error) {
 				push(error);
 			}
-			if (errors.length === 1) throw errors[0]!;
-			if (errors.length > 1) throw new AggregateError(errors, `folderMountedVolume cleanup failed (${errors.length})`);
+			return { mountsCleared, errors };
 		},
 	};
 }
@@ -1591,19 +1595,22 @@ test.skipIf(!elevated)("S1: a volume mounted in a folder (no drive letter): git'
 	} finally {
 		process.env.PATH = saved;
 		clearMark();
-		// One volume's cleanup failure must not skip the rest (or the fixture temp tree).
+		// One volume's cleanup failure must not skip the rest. Skip fixture recursive delete unless every mount is confirmed gone.
 		const cleanupErrors: Error[] = [];
+		let mountsSafe = true;
 		for (const x of [...volumes].reverse()) {
+			const result = x.done();
+			cleanupErrors.push(...result.errors);
+			if (!result.mountsCleared) mountsSafe = false;
+		}
+		if (mountsSafe) {
 			try {
-				x.done();
+				f.done();
 			} catch (error) {
 				cleanupErrors.push(error instanceof Error ? error : new Error(String(error)));
 			}
-		}
-		try {
-			f.done();
-		} catch (error) {
-			cleanupErrors.push(error instanceof Error ? error : new Error(String(error)));
+		} else {
+			cleanupErrors.push(Error(`skipped fixture recursive delete; unconfirmed mounts remain (left under ${f.dir})`));
 		}
 		if (cleanupErrors.length === 1) throw cleanupErrors[0]!;
 		if (cleanupErrors.length > 1) throw new AggregateError(cleanupErrors, `S1 cleanup failed (${cleanupErrors.length})`);
