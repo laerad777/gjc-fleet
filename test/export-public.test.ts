@@ -387,7 +387,9 @@ test("docs/public-release.md describes the CI that .github/workflows/ci.yml actu
 	expect(section).toContain(`Bun ${bun}`);
 	const os = /os:\s*\[([^\]]*)\]/.exec(ci)![1]!.split(",").map((o) => o.trim());
 	for (const o of os) expect(section).toContain(`\`${o}\``);
-	if (!os.includes("windows-latest")) expect(section).not.toContain("windows-latest");
+	const windows = ci.match(/^  windows:\s*\n([\s\S]*?)(?=^  \w+:|(?![\s\S]))/m)?.[1] ?? "";
+	expect(windows).toMatch(/^    runs-on: windows-latest$/m);
+	expect(section).toContain("`windows-latest`");
 	for (const step of ci.matchAll(/^\s*- run: (.+)$/gm)) if (/^bun|^bunx/.test(step[1]!)) expect(section).toContain(`\`${step[1]!.trim()}\``);
 });
 

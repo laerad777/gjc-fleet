@@ -10,15 +10,121 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: Test (${{ matrix.os }})
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 45
-    continue-on-error: ${{ matrix.os == 'windows-latest' }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+  changes:
+    name: Classify PR changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      docs_only: ${{ steps.classify.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Detect documentation-only changes
+        id: classify
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          [[ "$BASE_SHA" =~ ^[a-f0-9]{40}$ && "$HEAD_SHA" =~ ^[a-f0-9]{40}$ ]]
+          paths=$(mktemp)
+          trap 'rm -f "$paths"' EXIT
+          git diff --no-ext-diff --no-renames --name-only -z "$BASE_SHA...$HEAD_SHA" -- >"$paths"
+          docs_only=false
+          if [ -s "$paths" ]; then
+            docs_only=true
+            while IFS= read -r -d '' path; do
+              if [[ "$path" != README.md && ! "$path" =~ ^docs/[A-Za-z0-9_./-]+\.md$ ]]; then
+                docs_only=false
+                break
+              fi
+            done <"$paths"
+          fi
+          printf 'docs_only=%s\n' "$docs_only" >>"$GITHUB_OUTPUT"
+
+  static:
+    name: Static checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.4"
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: "1.25.8"
+          cache: false
+      - name: Check Git and lint workflows
+        run: |
+          version=$(git --version | awk '{print $3}')
+          test "$(printf '%s\n' 2.44.0 "$version" | sort -V | head -1)" = 2.44.0
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          "$(go env GOPATH)/bin/actionlint" -color=false
+      - run: bun install --frozen-lockfile
+      - run: bunx tsc --noEmit
+      - run: bunx tsc --noEmit -p tsconfig.test.json
+      - name: Build and smoke-test the CLI
+        run: |
+          bun run build
+          bun src/cli.ts --help
+          bun .local/build/cli.js --help
+
+  security:
+    name: Privacy, license and secrets
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.4"
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: "1.25.8"
+          cache: false
+      - run: bun scripts/privacy-scan.ts
+      - run: bun run license:check
+      - name: Scan PR commits without printing findings
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          [[ "$BASE_SHA" =~ ^[a-f0-9]{40}$ && "$HEAD_SHA" =~ ^[a-f0-9]{40}$ ]]
+          git cat-file -e "$BASE_SHA^{commit}"
+          git cat-file -e "$HEAD_SHA^{commit}"
+          go install github.com/zricethezav/gitleaks/v8@v8.30.1
+          cfg=$(mktemp)
+          ignore=$(mktemp)
+          trap 'rm -f "$cfg" "$ignore"' EXIT
+          printf '[extend]\nuseDefault = true\n' >"$cfg"
+          if "$(go env GOPATH)/bin/gitleaks" git --config "$cfg" \
+            --gitleaks-ignore-path "$ignore" --ignore-gitleaks-allow --redact=100 \
+            --exit-code 42 --log-opts="$BASE_SHA..$HEAD_SHA" . >/dev/null 2>&1; then
+            echo "PR commit scan passed."
+          else
+            rc=$?
+            if [ "$rc" -eq 42 ]; then
+              echo "::error::Potential credential found; investigate privately."
+            else
+              echo "::error::Secret scan could not complete."
+            fi
+            exit 1
+          fi
+
+  docs:
+    name: Release docs consistency
+    needs: changes
+    if: ${{ needs.changes.outputs.docs_only == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -27,8 +133,66 @@ jobs:
         with:
           bun-version: "1.4.4"
       - run: bun install --frozen-lockfile
-      - run: bunx tsc --noEmit
-      - run: bunx tsc --noEmit -p tsconfig.test.json
-      - run: bun scripts/privacy-scan.ts
-      - run: bun run license:check
+      - run: bun test test/export-public.test.ts
+
+  test:
+    name: Test (${{ matrix.os }})
+    needs: changes
+    if: ${{ needs.changes.outputs.docs_only == 'false' }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.4"
+      - run: git --version
+      - run: bun install --frozen-lockfile
       - run: bun test test
+
+  windows:
+    name: Test (windows-latest)
+    needs: changes
+    if: ${{ needs.changes.outputs.docs_only == 'false' }}
+    runs-on: windows-latest
+    timeout-minutes: 45
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.4"
+      - run: git --version
+      - run: bun install --frozen-lockfile
+      - run: bun test test
+
+  gate:
+    name: PR gate
+    if: ${{ always() }}
+    needs: [changes, static, security, docs, test]
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Require the selected checks to succeed
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
+          STATIC: ${{ needs.static.result }}
+          SECURITY: ${{ needs.security.result }}
+          DOCS: ${{ needs.docs.result }}
+          TEST: ${{ needs.test.result }}
+        run: |
+          test "$CHANGES" = success && test "$STATIC" = success && test "$SECURITY" = success || exit 1
+          case "$DOCS_ONLY" in
+            true) test "$DOCS" = success && test "$TEST" = skipped ;;
+            false) test "$DOCS" = skipped && test "$TEST" = success ;;
+            *) exit 1 ;;
+          esac
