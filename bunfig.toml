@@ -1,0 +1,3 @@
+[test]
+# Suite-wide planted-program guard: see test/support/spawn-guard.ts.
+preload = ["./test/support/spawn-guard.ts"]

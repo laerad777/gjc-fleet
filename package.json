@@ -1,0 +1,30 @@
+{
+	"name": "@gjc/fleet",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"license": "MIT",
+	"engines": {
+		"bun": ">=1.3.0"
+	},
+	"exports": {
+		".": "./src/index.ts"
+	},
+	"bin": {
+		"gjc-fleet": "./src/cli.ts"
+	},
+	"scripts": {
+		"test": "bun test test",
+		"typecheck": "tsc --noEmit",
+		"typecheck:test": "tsc --noEmit -p tsconfig.test.json",
+		"verify": "bun scripts/verify.ts",
+		"license:check": "bun scripts/license-check.ts",
+		"build": "bun build src/index.ts src/cli.ts src/node.ts src/source-transfer.ts --target=bun --outdir=.local/build",
+		"fleet": "bun src/cli.ts"
+	},
+	"devDependencies": {
+		"@types/bun": "1.4.4",
+		"@types/node": "26.6.6",
+		"typescript": "5.9.3"
+	}
+}

@@ -1,0 +1,154 @@
+{
+	"allow": [
+		{
+			"file": "test/archive-session-shapes.test.ts",
+			"rule": "home-path-macos",
+			"sha256": "25cfd52d3808fa02d1a8e91f5bb286d85745e536ecde96e3d6fdd52de7f70a89"
+		},
+		{
+			"file": "test/bounded-text.test.ts",
+			"rule": "email",
+			"sha256": "377d9e7cbea59b23926a0790f7ee1413c338a66e06a4ec179ba2916719e27556"
+		},
+		{
+			"file": "test/candidate-package.test.ts",
+			"rule": "private-ipv4",
+			"sha256": "df6a85d7982d35bee0238bad163e54a4c2d3c27afd6e99217f7d460f769d1f8d"
+		},
+		{
+			"file": "test/clawhip-control.test.ts",
+			"rule": "snowflake-id",
+			"sha256": "5bcc04bd6afb5522df64e3ec9df10a4449c62bad5262198364265b115d9b356e"
+		},
+		{
+			"file": "test/dashboard.test.ts",
+			"rule": "home-path-linux",
+			"sha256": "67b07499cbadeca9b6561b3fa1f96c39de2cc40a8c6075801b58bd918720a64e"
+		},
+		{
+			"file": "test/dashboard.test.ts",
+			"rule": "private-ipv4",
+			"sha256": "0546412d61ba57f140cbc562c81ed83fb1b8aae26b57bb1ac00d5eddc798ac0f"
+		},
+		{
+			"file": "test/dashboard.test.ts",
+			"rule": "volumes-path",
+			"sha256": "53a5b0349a85660e00e0d1b4db8317d34fff90f9123d9d4c767e422727952c9d"
+		},
+		{
+			"file": "test/diagnostic-deny.test.ts",
+			"rule": "home-path-linux",
+			"sha256": "912ccc6e4b9447b262703583d6b3545ddecb68ccb3586e53d0ff0f8b02e74d06"
+		},
+		{
+			"file": "test/diagnostic-deny.test.ts",
+			"rule": "home-path-linux",
+			"sha256": "ffb0a9ec888277c655a4c7c4d60a3e596540c51f45849040ae07e62aedeba518"
+		},
+		{
+			"file": "test/diagnostic-deny.test.ts",
+			"rule": "home-path-macos",
+			"sha256": "9b97e00b0c1b6cd11cc285972f340e4889a150ca8f781692770aa00effe9c031"
+		},
+		{
+			"file": "test/diagnostic-deny.test.ts",
+			"rule": "home-path-windows",
+			"sha256": "d31a0d00d7f0c994da66352dcec58e110f1a3217ecf9ffe033853c5ad940ddb7"
+		},
+		{
+			"file": "test/diagnostic-deny.test.ts",
+			"rule": "private-ipv4",
+			"sha256": "8e099943f7370d7ecd46ad56442e02670e8ed1a8b2ba5c42a69f06f1c050189b"
+		},
+		{
+			"file": "test/export-public-error.test.ts",
+			"rule": "email",
+			"sha256": "68a20b6e1ed526477c7575831bcb904ed401195aa5419df0b6961bb7a968d699"
+		},
+		{
+			"file": "test/failure-diagnostic.test.ts",
+			"rule": "home-path-windows",
+			"sha256": "6c50d46eeef2c96f766fc12005ca85abb142011149c9e863da37856ae0987fd9"
+		},
+		{
+			"file": "test/failure-diagnostic.test.ts",
+			"rule": "home-path-windows",
+			"sha256": "d31a0d00d7f0c994da66352dcec58e110f1a3217ecf9ffe033853c5ad940ddb7"
+		},
+		{
+			"file": "test/onboarding-public-error.test.ts",
+			"rule": "email",
+			"sha256": "68a20b6e1ed526477c7575831bcb904ed401195aa5419df0b6961bb7a968d699"
+		},
+		{
+			"file": "test/operator.test.ts",
+			"rule": "home-path-windows",
+			"sha256": "d31a0d00d7f0c994da66352dcec58e110f1a3217ecf9ffe033853c5ad940ddb7"
+		},
+		{
+			"file": "test/preparation-paths.test.ts",
+			"rule": "home-path-windows",
+			"sha256": "cd51d2161ef451fe31bac8d3ecf49df50c9046f4cffeb56e3a052a9e249cc7f9"
+		},
+		{
+			"file": "test/preparation-paths.test.ts",
+			"rule": "volumes-path",
+			"sha256": "179e137b3fc9d741639f69a5814fcee278e31fc4f95f2d2d0470f9eb915808a2"
+		},
+		{
+			"file": "test/progress.test.ts",
+			"rule": "home-path-windows",
+			"sha256": "5003f83371ee8d0f1c8b7494a6b7f67f5cded654482b3494f445eb1b9cdac7c5"
+		},
+		{
+			"file": "test/progress.test.ts",
+			"rule": "home-path-windows",
+			"sha256": "5c419d6d64150e71c4a2d863500ca1022c798005acdbfb2e025f3381fabcea1d"
+		},
+		{
+			"file": "test/receiptless-diagnostic.test.ts",
+			"rule": "home-path-windows",
+			"sha256": "d31a0d00d7f0c994da66352dcec58e110f1a3217ecf9ffe033853c5ad940ddb7"
+		},
+		{
+			"file": "test/receiptless-late-receipt.test.ts",
+			"rule": "snowflake-id",
+			"sha256": "5bcc04bd6afb5522df64e3ec9df10a4449c62bad5262198364265b115d9b356e"
+		},
+		{
+			"file": "test/release-probe-readonly.test.ts",
+			"rule": "volumes-path",
+			"sha256": "53a5b0349a85660e00e0d1b4db8317d34fff90f9123d9d4c767e422727952c9d"
+		},
+		{
+			"file": "test/resource-return-diagnostic.test.ts",
+			"rule": "home-path-windows",
+			"sha256": "d31a0d00d7f0c994da66352dcec58e110f1a3217ecf9ffe033853c5ad940ddb7"
+		},
+		{
+			"file": "test/resource-return-fenced.test.ts",
+			"rule": "snowflake-id",
+			"sha256": "5bcc04bd6afb5522df64e3ec9df10a4449c62bad5262198364265b115d9b356e"
+		},
+		{
+			"file": "test/result-export.test.ts",
+			"rule": "email",
+			"sha256": "68a20b6e1ed526477c7575831bcb904ed401195aa5419df0b6961bb7a968d699"
+		},
+		{
+			"file": "test/stack-interactions.test.ts",
+			"rule": "snowflake-id",
+			"sha256": "5bcc04bd6afb5522df64e3ec9df10a4449c62bad5262198364265b115d9b356e"
+		},
+		{
+			"file": "test/work-unit.test.ts",
+			"rule": "snowflake-id",
+			"sha256": "5bcc04bd6afb5522df64e3ec9df10a4449c62bad5262198364265b115d9b356e"
+		},
+		{
+			"file": "test/workspace.test.ts",
+			"rule": "home-path-linux",
+			"sha256": "eab610c9f1ea784e8eeb54b8e0f1d6f09f6e30b206838c1225a67d2bf11bf307"
+		}
+	]
+}
