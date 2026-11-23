@@ -108,7 +108,8 @@ function treeFsSpawn(
 		}
 		if (name === "test" && args[0] === "-e") return okSpawn("", 0);
 		if (name === "test" && args[0] === "-f") {
-			const p = args[1] ?? "";
+			// join() uses `\` on Windows; compare on a normalized form.
+			const p = (args[1] ?? "").replaceAll("\\", "/");
 			if (p.endsWith("/.git")) return okSpawn("", 1);
 			if (p.endsWith("/HEAD") || p.includes("/refs/")) return okSpawn("", 0);
 			return okSpawn("", 1);
@@ -116,7 +117,7 @@ function treeFsSpawn(
 		if (name === "head") {
 			if (headResult === "timeout") return timeoutSpawn();
 			if (headResult === "read_failed") return failSpawn(1);
-			const p = args[args.length - 1] ?? "";
+			const p = (args[args.length - 1] ?? "").replaceAll("\\", "/");
 			if (p.endsWith("/HEAD")) return okSpawn(`ref: refs/heads/main\n`);
 			if (p.includes("/refs/heads/main")) return okSpawn(`${SHA}\n`);
 			return failSpawn(1);
