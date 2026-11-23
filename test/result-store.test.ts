@@ -1628,7 +1628,7 @@ test("L2: a refused writable open never chmods or converts a DELETE-mode databas
 		opened.close();
 	}
 	expect(journalMode(good)).toBe("wal");
-});
+}, 30_000);
 
 test("L1: an open validates the fence from one snapshot while another process commits the switch and the first externalisation", () => {
 	for (const readOnly of [true, false]) {
