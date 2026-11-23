@@ -580,8 +580,7 @@ test("300 tasks with 8 MB rows: metadata-only scheduling, bounded memory and tim
 	const measured = { dbBytes, cycleMsMax: Math.max(...cycleTimes), cycleMsMedian: cycleTimes.sort((a, b) => a - b)[2], allObservedMs, rssBeforeMiB: rssBefore / 2 ** 20, rssPeakDeltaMiB: (rssPeak - rssBefore) / 2 ** 20, observations: [...stats.reads.values()].reduce((a, b) => a + b, 0) };
 	console.log("DAEMON_MEASUREMENT " + JSON.stringify(measured));
 	expect(stats.maxTaskConcurrency).toBe(1);
-	// Hosted macOS arm64 under full-suite load has spiked ~2.4s; keep a hard bound well above that.
-	expect(measured.cycleMsMax).toBeLessThan(5_000);
+	expect(measured.cycleMsMax).toBeLessThan(2_000);
 	expect(measured.rssPeakDeltaMiB).toBeLessThan(400);
 }, 300_000);
 
