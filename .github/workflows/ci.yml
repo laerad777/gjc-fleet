@@ -10,6 +10,40 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    name: Classify PR changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      docs_only: ${{ steps.classify.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Detect documentation-only changes
+        id: classify
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          [[ "$BASE_SHA" =~ ^[a-f0-9]{40}$ && "$HEAD_SHA" =~ ^[a-f0-9]{40}$ ]]
+          paths=$(mktemp)
+          trap 'rm -f "$paths"' EXIT
+          git diff --no-ext-diff --no-renames --name-only -z "$BASE_SHA...$HEAD_SHA" -- >"$paths"
+          docs_only=false
+          if [ -s "$paths" ]; then
+            docs_only=true
+            while IFS= read -r -d '' path; do
+              if [[ "$path" != README.md && ! "$path" =~ ^docs/[A-Za-z0-9_./-]+\.md$ ]]; then
+                docs_only=false
+                break
+              fi
+            done <"$paths"
+          fi
+          printf 'docs_only=%s\n' "$docs_only" >>"$GITHUB_OUTPUT"
+
   static:
     name: Static checks
     runs-on: ubuntu-latest
@@ -38,6 +72,7 @@ jobs:
         run: |
           bun run build
           bun src/cli.ts --help
+          bun .local/build/cli.js --help
 
   security:
     name: Privacy, license and secrets
@@ -84,15 +119,50 @@ jobs:
             exit 1
           fi
 
+  docs:
+    name: Release docs consistency
+    needs: changes
+    if: ${{ needs.changes.outputs.docs_only == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.4"
+      - run: bun install --frozen-lockfile
+      - run: bun test test/export-public.test.ts
+
   test:
     name: Test (${{ matrix.os }})
+    needs: changes
+    if: ${{ needs.changes.outputs.docs_only == 'false' }}
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
-    continue-on-error: ${{ matrix.os == 'windows-latest' }}
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.4"
+      - run: git --version
+      - run: bun install --frozen-lockfile
+      - run: bun test test
+
+  windows:
+    name: Test (windows-latest)
+    needs: changes
+    if: ${{ needs.changes.outputs.docs_only == 'false' }}
+    runs-on: windows-latest
+    timeout-minutes: 45
+    continue-on-error: true
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -107,15 +177,22 @@ jobs:
   gate:
     name: PR gate
     if: ${{ always() }}
-    needs: [static, security, test]
+    needs: [changes, static, security, docs, test]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: Require all blocking jobs to succeed
+      - name: Require the selected checks to succeed
         env:
+          CHANGES: ${{ needs.changes.result }}
+          DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
           STATIC: ${{ needs.static.result }}
           SECURITY: ${{ needs.security.result }}
+          DOCS: ${{ needs.docs.result }}
           TEST: ${{ needs.test.result }}
         run: |
-          printf 'static=%s security=%s test=%s\n' "$STATIC" "$SECURITY" "$TEST"
-          test "$STATIC" = success && test "$SECURITY" = success && test "$TEST" = success
+          test "$CHANGES" = success && test "$STATIC" = success && test "$SECURITY" = success || exit 1
+          case "$DOCS_ONLY" in
+            true) test "$DOCS" = success && test "$TEST" = skipped ;;
+            false) test "$DOCS" = skipped && test "$TEST" = success ;;
+            *) exit 1 ;;
+          esac

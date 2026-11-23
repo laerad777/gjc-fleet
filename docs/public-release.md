@@ -78,10 +78,12 @@ bun scripts/export-public.ts --out PATH [--repo PATH] [--exclude FILE] [--deny-l
 
 Jobs:
 
-- `static` runs on `ubuntu-latest`: it checks Git is at least 2.44, lints the workflow, then runs `bun install --frozen-lockfile`, `bunx tsc --noEmit`, `bunx tsc --noEmit -p tsconfig.test.json`, `bun run build` and `bun src/cli.ts --help`.
+- `changes` compares the pull request against its merge base. Only a nonempty change set limited to `README.md` and Markdown under `docs/` can skip the hosted OS suites. Empty or mixed changes run the suites; a classification error blocks the gate.
+- `static` runs on `ubuntu-latest`: it checks Git is at least 2.44, lints the workflow, then runs `bun install --frozen-lockfile`, `bunx tsc --noEmit`, `bunx tsc --noEmit -p tsconfig.test.json`, `bun run build` and both `bun src/cli.ts --help` and `bun .local/build/cli.js --help`.
 - `security` runs on `ubuntu-latest`: `bun scripts/privacy-scan.ts`, `bun run license:check`, then a secret scan of the pull request commits that never prints what it finds.
-- `test` runs on `ubuntu-latest`, `macos-latest` and `windows-latest`: `git --version`, `bun install --frozen-lockfile`, `bun test test`.
-- `PR gate` passes only when `static`, `security` and `test` all succeed.
+- On docs-only changes, `docs` runs `bun test test/export-public.test.ts` to check release documentation and its workflow contract.
+- Otherwise, `test` runs on `ubuntu-latest` and `macos-latest`, and the separate informational `windows` job runs on `windows-latest`. Each runs `git --version`, `bun install --frozen-lockfile`, and `bun test test`.
+- `PR gate` requires `changes`, `static`, `security`, and the selected blocking test path. It does not wait for `windows`.
 
 The Windows target is informational (`continue-on-error`) until the hosted suite passes there reliably. The 11 tests in `test/windows-native.test.ts` need a real NTFS fixture directory (`FLEET_NATIVE_TEST_ROOT`) and are skipped in CI; run them by hand on an isolated, single-use Windows x64 machine.
 
