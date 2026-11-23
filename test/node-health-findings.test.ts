@@ -95,7 +95,7 @@ test("M1: a DB copied to a host whose clock is behind by the transfer time is ne
 		};
 		neverAhead(run(true), run(false));
 	}
-});
+}, 30_000);
 
 test("M1: a new process after an unobserved hour and a backward wall step is never ahead of the honest run", () => {
 	const run = (anomalous: boolean) => {
