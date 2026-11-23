@@ -1540,32 +1540,54 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 				writeFileSync(join(dirLong, "dp.txt"), lines.join("\r\n") + "\r\n");
 				return Bun.spawnSync(["diskpart", "/s", join(dirLong, "dp.txt")]);
 			};
+			const attachedState = (): "true" | "false" | "unknown" => {
+				const ps = [
+					`$p = ${JSON.stringify(vhdx)}`,
+					`try { $i = Get-DiskImage -ImagePath $p -ErrorAction Stop; if ($i.Attached -eq $true) { 'Attached=true' } elseif ($i.Attached -eq $false) { 'Attached=false' } else { 'Attached=unknown' } } catch { 'Attached=unknown' }`,
+				].join("; ");
+				const probe = Bun.spawnSync(["powershell", "-NoProfile", "-Command", ps], {
+					stdout: "pipe",
+					stderr: "ignore",
+					timeout: 5_000,
+				});
+				const line = `${probe.stdout}`
+					.toString()
+					.split(/\r?\n/)
+					.map((l) => l.trim())
+					.find((l) => /^Attached=(?:true|false|unknown)$/.test(l));
+				const v = line?.slice("Attached=".length);
+				return v === "true" || v === "false" ? v : "unknown";
+			};
 			// Detach offlines a volume that mid-test left with no folder mount (/D-only last unmount).
-			// Exit 87 "already detached" after a successful select still left the VHDX EBUSY on runners; cycle
-			// attach→detach with the same long path so VDS releases the file handle.
+			// Do not reattach: exit 87 "already detached" can still leave Attached=true. Confirm detach before any delete.
+			let detachConfirmed = false;
 			try {
-				let detach = runDetach([`select vdisk file="${vhdx}"`, "detach vdisk"]);
-				let detachText = `${detach.stdout}${detach.stderr}`.trim();
+				const detach = runDetach([`select vdisk file="${vhdx}"`, "detach vdisk"]);
+				const detachText = `${detach.stdout}${detach.stderr}`.trim();
 				const already = /already detached/i.test(detachText);
+				const detachedOk = detach.exitCode === 0 && /successfully detached/i.test(detachText);
+				const attached = attachedState();
 				console.log(
-					`[S1-teardown] diskpart detach exit=${detach.exitCode} already=${already} vhdx=${fixtureVhdx} dOnly=${lastMountRemovedWithDOnly}`,
+					`[S1-teardown] diskpart detach exit=${detach.exitCode} already=${already} attached=${attached} vhdx=${fixtureVhdx} dOnly=${lastMountRemovedWithDOnly}`,
 				);
-				if (detach.exitCode !== 0 && already) {
-					detach = runDetach([`select vdisk file="${vhdx}"`, "attach vdisk", "detach vdisk"]);
-					detachText = `${detach.stdout}${detach.stderr}`.trim();
-					console.log(
-						`[S1-teardown] diskpart reattach-detach exit=${detach.exitCode} already=${/already detached/i.test(detachText)} vhdx=${fixtureVhdx}`,
+				detachConfirmed = detachedOk || attached === "false";
+				if (!detachConfirmed) {
+					push(
+						Error(
+							`diskpart detach not confirmed for ${fixtureVhdx} (exit=${detach.exitCode}; already=${already}; Attached=${attached})` +
+								(lastMountRemovedWithDOnly ? " [last mount was /D-only before detach]" : ""),
+						),
 					);
-				}
-				if (detach.exitCode !== 0 && !/already detached/i.test(detachText)) {
-					push(Error(`diskpart detach exited ${detach.exitCode} for ${fixtureVhdx}`));
+					// mountsCleared false blocks the outer fixture recursive delete while the VHDX may still be attached.
+					return { mountsCleared: false, errors };
 				}
 			} catch (error) {
 				push(error);
+				return { mountsCleared: false, errors };
 			}
 			const postDetachOpen = readWriteOpen();
 			console.log(`[S1-teardown] post-detach read-write-open=${postDetachOpen} vhdx=${fixtureVhdx}`);
-			// After mounts are cleared and detach succeeds, the VDS/AV lock release is retried for a minute;
+			// After mounts are cleared and detach is confirmed, the VDS/AV lock release is retried for a minute;
 			// hosted runners have held it longer than the old 12 s bound. A still-locked file after that is a cleanup failure.
 			try {
 				let firstReadWriteOkAt: number | undefined;
@@ -1622,6 +1644,7 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 				}
 			} catch (error) {
 				push(error);
+				return { mountsCleared: false, errors };
 			}
 			return { mountsCleared, errors };
 		},
