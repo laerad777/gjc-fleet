@@ -1470,14 +1470,15 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 					throw Error(`diskpart detach exited ${detach.exitCode}: ${text}`);
 				}
 			}
-			// After mounts are cleared and detach succeeds, a brief VDS lock is retried; persistent EBUSY is a cleanup failure.
+			// After mounts are cleared and detach succeeds, the VDS/AV lock release is retried for a minute;
+			// hosted runners have held it longer than the old 12 s bound. A still-locked file after that is a cleanup failure.
 			for (let attempt = 0; ; attempt++) {
 				try {
 					rmSync(vhdx, { force: true });
 					return;
 				} catch (error: any) {
 					if (error?.code !== "EBUSY") throw error;
-					if (attempt >= 120) {
+					if (attempt >= 600) {
 						throw Error(`vhdx still EBUSY after mountvol clear + detach (${vhdx})`);
 					}
 					Bun.sleepSync(100);

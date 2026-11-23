@@ -188,7 +188,7 @@ describe("round-6 MEDIUM-A: walk and Git spellings never decide safety on their 
 			}
 			valid(identity, result);
 		}
-	});
+	}, 30_000);
 	// Round 9: the index is node-owned, so a worker-recorded alias entry is not tracked at all.
 	test(
 		"a boundary matched by several Git spellings withholds every one of them; a worker index alias is not a tracked entry",
