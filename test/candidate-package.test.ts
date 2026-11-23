@@ -1440,7 +1440,16 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 					throw Error(`diskpart detach exited ${detach.exitCode}: ${text}`);
 				}
 			}
-			rmSync(vhdx, { force: true });
+			// Virtual Disk Service can keep the .vhdx locked briefly after detach (EBUSY on rm).
+			for (let attempt = 0; ; attempt++) {
+				try {
+					rmSync(vhdx, { force: true });
+					return;
+				} catch (error: any) {
+					if (error?.code !== "EBUSY" || attempt >= 50) throw error;
+					Bun.sleepSync(100);
+				}
+			}
 		},
 	};
 }
