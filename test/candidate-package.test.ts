@@ -1431,7 +1431,15 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 		done() {
 			for (const at of points) Bun.spawnSync(["mountvol", at + "\\", "/D"]);
 			points.clear();
-			diskpart(`select vdisk file="${vhdx}"`, "detach vdisk");
+			// Detach is best-effort: a prior cleanup or failed attach can leave the VHD already detached (exit 87).
+			writeFileSync(join(dir, "dp.txt"), [`select vdisk file="${vhdx}"`, "detach vdisk"].join("\r\n") + "\r\n");
+			const detach = Bun.spawnSync(["diskpart", "/s", join(dir, "dp.txt")]);
+			if (detach.exitCode !== 0) {
+				const text = `${detach.stdout}${detach.stderr}`;
+				if (!/already detached/i.test(text)) {
+					throw Error(`diskpart detach exited ${detach.exitCode}: ${text}`);
+				}
+			}
 			rmSync(vhdx, { force: true });
 		},
 	};
