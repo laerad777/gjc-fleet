@@ -1515,6 +1515,7 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 				}
 			}
 			// openSync("r+") is a shared read-write open on Windows, not CreateFileW with zero share mode.
+			const fixtureVhdx = `${basename(dir)}/${basename(vhdx)}`;
 			const readWriteOpen = (): string => {
 				try {
 					const fd = openSync(vhdx, "r+");
@@ -1530,17 +1531,16 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 				writeFileSync(join(dir, "dp.txt"), [`select vdisk file="${vhdx}"`, "detach vdisk"].join("\r\n") + "\r\n");
 				const detach = Bun.spawnSync(["diskpart", "/s", join(dir, "dp.txt")]);
 				const detachText = `${detach.stdout}${detach.stderr}`.trim();
-				console.log(
-					`[S1-teardown] diskpart detach exit=${detach.exitCode} vhdx=${vhdx} dOnly=${lastMountRemovedWithDOnly} out=${detachText.slice(0, 800)}`,
-				);
+				// Log exit/dOnly only—diskpart bodies can echo the absolute VHDX path.
+				console.log(`[S1-teardown] diskpart detach exit=${detach.exitCode} vhdx=${fixtureVhdx} dOnly=${lastMountRemovedWithDOnly}`);
 				if (detach.exitCode !== 0 && !/already detached/i.test(detachText)) {
-					push(Error(`diskpart detach exited ${detach.exitCode}: ${detachText}`));
+					push(Error(`diskpart detach exited ${detach.exitCode} for ${fixtureVhdx}`));
 				}
 			} catch (error) {
 				push(error);
 			}
 			const postDetachOpen = readWriteOpen();
-			console.log(`[S1-teardown] post-detach read-write-open=${postDetachOpen} t=${Date.now()}`);
+			console.log(`[S1-teardown] post-detach read-write-open=${postDetachOpen} vhdx=${fixtureVhdx}`);
 			// After mounts are cleared and detach succeeds, the VDS/AV lock release is retried for a minute;
 			// hosted runners have held it longer than the old 12 s bound. A still-locked file after that is a cleanup failure.
 			try {
@@ -1549,12 +1549,12 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 					const openState = readWriteOpen();
 					if (openState === "ok" && firstReadWriteOkAt === undefined) {
 						firstReadWriteOkAt = Date.now();
-						console.log(`[S1-teardown] read-write-open became ok attempt=${attempt} t=${firstReadWriteOkAt}`);
+						console.log(`[S1-teardown] read-write-open became ok attempt=${attempt} vhdx=${fixtureVhdx}`);
 					}
 					try {
 						rmSync(vhdx, { force: true });
 						console.log(
-							`[S1-teardown] vhdx rm ok attempt=${attempt} readWriteFirstOk=${firstReadWriteOkAt ?? "never"} postDetachOpen=${postDetachOpen}`,
+							`[S1-teardown] vhdx rm ok attempt=${attempt} vhdx=${fixtureVhdx} readWriteFirstOk=${firstReadWriteOkAt ?? "never"} postDetachOpen=${postDetachOpen}`,
 						);
 						break;
 					} catch (error: any) {
@@ -1571,14 +1571,22 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 							].join("; ");
 							const probe = Bun.spawnSync(["powershell", "-NoProfile", "-Command", ps], {
 								stdout: "pipe",
-								stderr: "pipe",
+								stderr: "ignore",
 								timeout: 5_000,
 							});
-							const probeText = `${probe.stdout}`.toString().trim().slice(0, 800);
-							const attached = /Attached=(true|false|unknown)/.exec(probeText)?.[1] ?? "unknown";
-							console.log(`[S1-teardown] EBUSY lock probe exit=${probe.exitCode} attached=${attached}\n${probeText}`);
+							const allow =
+								/^(Attached=(?:true|false|unknown)|Defender(?: id=\d+ t=\S+|none)|VDS(?: id=\d+ t=\S+|none))$/;
+							const lines = `${probe.stdout}`
+								.toString()
+								.split(/\r?\n/)
+								.map((l) => l.trim())
+								.filter((l) => allow.test(l));
+							const attached = lines.find((l) => l.startsWith("Attached="))?.slice("Attached=".length) ?? "unknown";
+							console.log(
+								`[S1-teardown] EBUSY lock probe exit=${probe.exitCode} attached=${attached} lines=${lines.join(" | ")}`,
+							);
 							throw Error(
-								`vhdx still EBUSY after mountvol clear + detach (${vhdx})` +
+								`vhdx still EBUSY after mountvol clear + detach (${fixtureVhdx})` +
 									(lastMountRemovedWithDOnly ? " [last mount was /D-only before detach]" : "") +
 									` [postDetachOpen=${postDetachOpen}; readWriteFirstOk=${firstReadWriteOkAt ?? "never"}; lastReadWrite=${openState}; Attached=${attached}]`,
 							);
