@@ -1433,10 +1433,12 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 			// /D exit 0 with no volume id, or an explicit mountvol "not mounted" status (not generic path errors).
 			const explicitNotMounted = (text: string) => /not currently mounted|is not a mounted volume/i.test(text);
 			for (const mount of [...points]) {
+				// Removing a name does not dismount the volume. Offline it at the final mount.
+				const removal = points.size === 1 ? "/P" : "/D";
 				let lastDel = "";
 				let lastList = "";
 				for (let attempt = 0; attempt < 50; attempt++) {
-					const del = Bun.spawnSync(["mountvol", mount + "\\", "/D"]);
+					const del = Bun.spawnSync(["mountvol", mount + "\\", removal]);
 					lastDel = `${del.stdout}${del.stderr}`;
 					const listed = Bun.spawnSync(["mountvol", mount + "\\", "/L"]);
 					lastList = `${listed.stdout}${listed.stderr}`;
