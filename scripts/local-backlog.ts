@@ -27,6 +27,16 @@ export function classify(id: string, text: string | undefined, receipt?: { statu
  return "collected_unverified";
 }
 
+/** Match report-*.md whether inventory keys used `/` or Windows `\`. */
+export function isReportPath(path: string): boolean {
+ return /(^|\/)report-.*\.md$/.test(path.replaceAll("\\", "/"));
+}
+
+/** Stable path spelling for backlog JSON (always `/`). */
+export function reportPathKey(path: string): string {
+ return path.replaceAll("\\", "/");
+}
+
 // This command reads only local files and executes only this node's local tests/build.
 // Report prose, file existence, and historical CLEAN labels never establish success.
 if (import.meta.main) {
@@ -39,8 +49,8 @@ if (import.meta.main) {
  const receipts: Record<string, { status?: string; failureCode?: string }> = receiptArg
   ? await Bun.file(resolve(root, receiptArg.slice("--receipts=".length))).json() : {};
  const reports = [];
- for (const path of Object.keys(before).filter(path => /(^|\/)report-.*\.md$/.test(path))) {
-  reports.push({ path, sha256: before[path], classification: classify(path, await Bun.file(join(root, path)).text(), receipts[path]), reason: "Report artifact is not CLEAN; receipt classifications are local evidence only" });
+ for (const path of Object.keys(before).filter(isReportPath)) {
+  reports.push({ path: reportPathKey(path), sha256: before[path], classification: classify(path, await Bun.file(join(root, path)).text(), receipts[path]), reason: "Report artifact is not CLEAN; receipt classifications are local evidence only" });
  }
  const commands = [];
  if (verify) {

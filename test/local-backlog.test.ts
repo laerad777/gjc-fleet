@@ -2,7 +2,7 @@ import { test, expect } from "bun:test";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { classify } from "../scripts/local-backlog";
+import { classify, isReportPath, reportPathKey } from "../scripts/local-backlog";
 
 test("backlog classification never promotes report prose or missing receipts", () => {
  expect(classify("report", "CLEAN tests passed")).toBe("unknown_missing_receipt");
@@ -12,6 +12,15 @@ test("backlog classification never promotes report prose or missing receipts", (
  expect(classify("run", "partial", { status: "failed", failureCode: "provider_quota_429" })).toBe("blocked_quota");
  expect(classify("run", "done", { status: "in_flight" })).toBe("unresolved_in_flight");
  expect(classify("run", "CLEAN", { status: "completed" })).toBe("collected_unverified");
+});
+
+test("isReportPath matches nested reports whether keys use / or Windows \\", () => {
+ expect(isReportPath("report-root.md")).toBe(true);
+ expect(isReportPath("docs/reports/report-abc.md")).toBe(true);
+ expect(isReportPath("docs\\reports\\report-abc.md")).toBe(true);
+ expect(isReportPath("docs\\reports\\RESULT.md")).toBe(false);
+ expect(isReportPath("docs\\reports\\not-report-abc.md")).toBe(false);
+ expect(reportPathKey("docs\\reports\\report-abc.md")).toBe("docs/reports/report-abc.md");
 });
 
 test("local backlog lists report-*.md under docs/reports and still lists a root report", async () => {
