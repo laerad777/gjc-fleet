@@ -1514,7 +1514,8 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 					push(error);
 				}
 			}
-			const exclusiveOpen = (): string => {
+			// openSync("r+") is a shared read-write open on Windows, not CreateFileW with zero share mode.
+			const readWriteOpen = (): string => {
 				try {
 					const fd = openSync(vhdx, "r+");
 					closeSync(fd);
@@ -1538,22 +1539,22 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 			} catch (error) {
 				push(error);
 			}
-			const postDetachOpen = exclusiveOpen();
-			console.log(`[S1-teardown] post-detach exclusive-open=${postDetachOpen} t=${Date.now()}`);
+			const postDetachOpen = readWriteOpen();
+			console.log(`[S1-teardown] post-detach read-write-open=${postDetachOpen} t=${Date.now()}`);
 			// After mounts are cleared and detach succeeds, the VDS/AV lock release is retried for a minute;
 			// hosted runners have held it longer than the old 12 s bound. A still-locked file after that is a cleanup failure.
 			try {
-				let firstExclusiveOkAt: number | undefined;
+				let firstReadWriteOkAt: number | undefined;
 				for (let attempt = 0; ; attempt++) {
-					const openState = exclusiveOpen();
-					if (openState === "ok" && firstExclusiveOkAt === undefined) {
-						firstExclusiveOkAt = Date.now();
-						console.log(`[S1-teardown] exclusive-open became ok attempt=${attempt} t=${firstExclusiveOkAt}`);
+					const openState = readWriteOpen();
+					if (openState === "ok" && firstReadWriteOkAt === undefined) {
+						firstReadWriteOkAt = Date.now();
+						console.log(`[S1-teardown] read-write-open became ok attempt=${attempt} t=${firstReadWriteOkAt}`);
 					}
 					try {
 						rmSync(vhdx, { force: true });
 						console.log(
-							`[S1-teardown] vhdx rm ok attempt=${attempt} exclusiveFirstOk=${firstExclusiveOkAt ?? "never"} postDetachOpen=${postDetachOpen}`,
+							`[S1-teardown] vhdx rm ok attempt=${attempt} readWriteFirstOk=${firstReadWriteOkAt ?? "never"} postDetachOpen=${postDetachOpen}`,
 						);
 						break;
 					} catch (error: any) {
@@ -1562,7 +1563,7 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 							throw Error(
 								`vhdx still EBUSY after mountvol clear + detach (${vhdx})` +
 									(lastMountRemovedWithDOnly ? " [last mount was /D-only before detach]" : "") +
-									` [postDetachOpen=${postDetachOpen}; exclusiveFirstOk=${firstExclusiveOkAt ?? "never"}; lastExclusive=${openState}]`,
+									` [postDetachOpen=${postDetachOpen}; readWriteFirstOk=${firstReadWriteOkAt ?? "never"}; lastReadWrite=${openState}]`,
 							);
 						}
 						Bun.sleepSync(100);
