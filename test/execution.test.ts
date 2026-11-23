@@ -461,6 +461,11 @@ test("local transport keeps shell-sensitive session id in real argv", async () =
 }, 60_000);
 test("positive ssh path: absolute ssh keeps command path and wraps a safe remote", async () => {
 	const sessionId = "00000000-0000-0000-0000-000000000001";
+	// resolveProgram requires a drive-absolute path on Windows; POSIX /usr/bin/ssh is refused there.
+	const sshAbs =
+		process.platform === "win32"
+			? String.raw`C:\Windows\System32\OpenSSH\ssh.exe`
+			: "/usr/bin/ssh";
 	const seen: string[][] = [];
 	const original = Bun.spawn.bind(Bun);
 	const spy = spyOn(Bun, "spawn").mockImplementation(((cmd: string[], options: any) => {
@@ -478,7 +483,7 @@ test("positive ssh path: absolute ssh keeps command path and wraps a safe remote
 		const sshNode = {
 			os: "linux",
 			sdkTransport: {
-				command: "/usr/bin/ssh",
+				command: sshAbs,
 				args: ["node.example", "cd /tmp/agent && gjc"],
 			},
 		} as NodeConfig;
@@ -494,7 +499,7 @@ test("positive ssh path: absolute ssh keeps command path and wraps a safe remote
 		spy.mockRestore();
 	}
 	expect(seen.length).toBe(1);
-	expect(seen[0]![0]).toBe("/usr/bin/ssh");
+	expect(seen[0]![0]).toBe(sshAbs);
 	expect(seen[0]![1]).toBe("node.example");
 	expect(seen[0]![2]).toBe(
 		buildSshPublicSdkRemote("linux", "cd /tmp/agent && gjc", [
