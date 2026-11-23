@@ -971,13 +971,13 @@ function placementFixture(slowProbeMs: number) {
 for (const scenario of ["slow probe", "unmeasurable"] as const) test(`R1 (${scenario}): while a queue pass places on a slow or unreachable node, the other node keeps its observation cadence`, async () => {
 	const f = placementFixture(scenario === "slow probe" ? 1_500 : 1);
 	const stats = fakeCoordinator(f.fleet, () => 2);
-	let slowSampleStart: number | undefined;
-	let slowSampleEnd: number | undefined;
+	// Completed slow windows only: never compare against a start that outlived its matching end.
+	const slowWindows: { start: number; end: number }[] = [];
 	const sample = async (n: NodeConfig) => {
 		if (n.id === "slow" && scenario === "unmeasurable") {
-			slowSampleStart = Date.now();
+			const start = Date.now();
 			await Bun.sleep(1_000);
-			slowSampleEnd = Date.now();
+			slowWindows.push({ start, end: Date.now() });
 			return { ok: false as const, at: Date.now(), error: "unreachable" };
 		}
 		return { ...headroom([n.id], 3).samples.get(n.id)!, at: Date.now() };
@@ -989,10 +989,12 @@ for (const scenario of ["slow probe", "unmeasurable"] as const) test(`R1 (${scen
 	await until(() => {
 		const calls = stats.nodeCalls.get("fast") ?? [];
 		if (scenario === "unmeasurable") {
-			// Do not stop until the slow sample has actually begun; otherwise "overlap" is vacuous.
-			return slowSampleStart != null && calls.length >= 10 && f.probes("fast") >= 1;
+			// Do not stop until at least one slow sample has finished; otherwise "overlap" is vacuous or races.
+			return slowWindows.length >= 1 && calls.length >= 10 && f.probes("fast") >= 1;
 		}
-		return calls.length >= 10 && f.probes("fast") >= 1 && f.probes("slow") >= 1;
+		// Wait for the probe's end line too, so stop() cannot race the 1.5 s sleepyTransport sleep.
+		const hasSlowEnd = readFileSync(join(f.dir, "probes.log"), "utf8").split("\n").some((l) => l.startsWith("slow:end:"));
+		return calls.length >= 10 && f.probes("fast") >= 1 && f.probes("slow") >= 1 && hasSlowEnd;
 	}, 20_000);
 	const stoppedAt = Date.now();
 	d.stop();
@@ -1014,8 +1016,8 @@ for (const scenario of ["slow probe", "unmeasurable"] as const) test(`R1 (${scen
 	expect(stats.other).toEqual([]);
 	// Queue passes ran and probed: the slow node only when its sample succeeded, never when it failed.
 	expect(f.probes("fast")).toBeGreaterThanOrEqual(1);
-	let slowStart = slowSampleStart;
-	let slowEnd = slowSampleEnd;
+	let slowStart: number | undefined;
+	let slowEnd: number | undefined;
 	if (scenario === "slow probe") {
 		expect(f.probes("slow")).toBeGreaterThanOrEqual(1);
 		const lines = readFileSync(join(f.dir, "probes.log"), "utf8").split("\n");
@@ -1027,8 +1029,9 @@ for (const scenario of ["slow probe", "unmeasurable"] as const) test(`R1 (${scen
 		slowEnd = Number(endLine!.slice("slow:end:".length));
 	} else {
 		expect(f.probes("slow")).toBe(0);
-		expect(slowStart).toBeDefined();
-		expect(slowEnd).toBeDefined();
+		expect(slowWindows.length).toBeGreaterThanOrEqual(1);
+		slowStart = slowWindows[0]!.start;
+		slowEnd = slowWindows[0]!.end;
 	}
 	expect(slowEnd!).toBeGreaterThan(slowStart!);
 	// Fast observations must actually overlap the slow work window, not merely finish after it starts.
