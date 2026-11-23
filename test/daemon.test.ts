@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { rm } from "node:fs/promises";
@@ -481,7 +481,7 @@ test("kill between every pair of writes leaves a consistent store; a restarted d
 	// Every write point of a full run was a kill point once (renewal timing may add a few writes).
 	expect(total).toBeGreaterThan(5);
 	expect(kills).toBeGreaterThanOrEqual(total - 3);
-	console.log("DAEMON_KILL_POINTS " + JSON.stringify({ kills, commitsOfFullRun: total }));
+	writeSync(2, "DAEMON_KILL_POINTS " + JSON.stringify({ kills, commitsOfFullRun: total }) + "\n");
 }, 600_000);
 
 test("300 tasks with 8 MB rows: metadata-only scheduling, bounded memory and time", async () => {
@@ -502,7 +502,7 @@ test("300 tasks with 8 MB rows: metadata-only scheduling, bounded memory and tim
 		if (child.exitCode !== 0) throw new Error(out);
 		const measured = out.split("\n").find(line => line.includes("DAEMON_MEASUREMENT"));
 		if (!measured) throw new Error(out);
-		console.log(measured);
+		writeSync(2, measured + "\n");
 		return;
 	}
 	const f = fixture(["n1", "n2", "n3"]);
@@ -581,7 +581,7 @@ test("300 tasks with 8 MB rows: metadata-only scheduling, bounded memory and tim
 	// hosted-runner spike among the five samples is tolerated; ceiling tracks observed ~2.5s spikes.
 	const sortedCycles = [...cycleTimes].sort((a, b) => a - b);
 	const measured = { dbBytes, cycleMsMax: sortedCycles[sortedCycles.length - 1]!, cycleMsMedian: sortedCycles[2]!, cycleMs: cycleTimes, allObservedMs, rssBeforeMiB: rssBefore / 2 ** 20, rssPeakDeltaMiB: (rssPeak - rssBefore) / 2 ** 20, observations: [...stats.reads.values()].reduce((a, b) => a + b, 0) };
-	console.log("DAEMON_MEASUREMENT " + JSON.stringify(measured));
+	writeSync(2, "DAEMON_MEASUREMENT " + JSON.stringify(measured) + "\n");
 	expect(stats.maxTaskConcurrency).toBe(1);
 	expect(measured.cycleMsMedian).toBeLessThan(2_000);
 	expect(cycleTimes.filter((t) => t >= 2_000).length).toBeLessThanOrEqual(1);
