@@ -202,6 +202,8 @@ test("actual helper: unknown exception has bounded correlation and local log", a
 	);
 	const correlationId = "correlationId" in reply ? reply.correlationId : undefined;
 	expect(correlationId).toMatch(/^[a-f0-9-]{36}$/);
+	// Without O_NOFOLLOW (Windows), file logging is fail-closed and falls back to stderr.
+	if (!nodeErrorLogSupportsNoFollow) return;
 	const log = await readFile(resolve(import.meta.dir, "../src/.node-errors.log"), "utf8");
 	expect(log).toContain(correlationId!);
 	expect(log).not.toContain(f.dir);

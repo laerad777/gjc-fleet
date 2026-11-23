@@ -8,7 +8,7 @@ import { join, resolve } from "node:path";
 import { repositoryFixture } from "./fixtures/coordinator";
 import { headroom } from "./admission-fixture";
 import * as helperModule from "../src/node";
-import { NodeReplyError, oneShot } from "../src/node";
+import { NodeReplyError, oneShot, nodeErrorLogSupportsNoFollow } from "../src/node";
 import { prepareWorkspace, sha256 } from "../src/workspace";
 import { Fleet } from "../src/fleet";
 import { FleetStore } from "../src/store";
@@ -151,11 +151,14 @@ test("R1: executed collection whose reply cannot be encoded is executed_reply_fa
 		certainty: "unknown",
 		correlationId: expect.stringMatching(/^[a-f0-9-]{36}$/),
 	});
-	const log = await readFile(resolve(import.meta.dir, "../src/.node-errors.log"), "utf8");
-	expect(log).toContain(
-		JSON.stringify({ correlationId: r.reply.correlationId, error: "executed_reply_failed" }),
-	);
-	clean(log);
+	// Without O_NOFOLLOW (Windows), file logging is fail-closed and falls back to stderr.
+	if (nodeErrorLogSupportsNoFollow) {
+		const log = await readFile(resolve(import.meta.dir, "../src/.node-errors.log"), "utf8");
+		expect(log).toContain(
+			JSON.stringify({ correlationId: r.reply.correlationId, error: "executed_reply_failed" }),
+		);
+		clean(log);
+	}
 	// The same answer through the caller is an unknown outcome, not a refusal.
 	const helper = join(f.dir, "replay.ts");
 	await writeFile(helper, `console.log(${JSON.stringify(r.stdout.trim())});process.exitCode=1;`);
