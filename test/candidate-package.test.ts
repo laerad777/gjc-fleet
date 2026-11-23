@@ -1,6 +1,6 @@
 import { afterAll, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { closeSync, copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, realpathSync, rmdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, delimiter, dirname, isAbsolute, join, relative } from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
@@ -1444,41 +1444,23 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 			const push = (error: unknown) => {
 				errors.push(error instanceof Error ? error : new Error(String(error)));
 			};
-			// Before offline/detach: drop cwd and fixture files under this volume so the test process (and any
-			// spawnSync child that inherited cwd) is not holding a directory or name lock on the VHDX.
-			const releaseTestHolds = () => {
-				const under = (path: string, root: string) => {
-					try {
-						const a = realpathSync.native(path).toLowerCase();
-						const b = realpathSync.native(root).toLowerCase();
-						return a === b || a.startsWith(b.endsWith("\\") ? b : b + "\\");
-					} catch {
-						return false;
-					}
-				};
+			const under = (path: string, root: string) => {
 				try {
-					const cwd = process.cwd();
-					if (under(cwd, dir) || [...points].some((m) => under(cwd, m))) process.chdir(tmpdir());
-				} catch (error) {
-					push(error);
-				}
-				for (const mount of [...points]) {
-					try {
-						for (const name of readdirSync(mount)) {
-							rmSync(join(mount, name), { recursive: true, force: true });
-						}
-					} catch (error) {
-						push(error);
-					}
-				}
-				try {
-					// diskpart script is the only lasting temp file beside the VHDX; rewrite closed after each spawnSync.
-					rmSync(join(dir, "dp.txt"), { force: true });
-				} catch (error) {
-					push(error);
+					const a = realpathSync.native(path).toLowerCase();
+					const b = realpathSync.native(root).toLowerCase();
+					return a === b || a.startsWith(b.endsWith("\\") ? b : b + "\\");
+				} catch {
+					return false;
 				}
 			};
-			releaseTestHolds();
+			// Move cwd off the volume before offline; never recursively delete through a live mount.
+			try {
+				const cwd = process.cwd();
+				if (under(cwd, dir) || [...points].some((m) => under(cwd, m))) process.chdir(tmpdir());
+			} catch (error) {
+				push(error);
+			}
+			const mountSnapshot = [...points];
 			// Volume{...} on /L means still mounted. Clear tracking only for a confirmed unmount:
 			// /D exit 0 with no volume id, or an explicit mountvol "not mounted" status (not generic path errors).
 			const explicitNotMounted = (text: string) => /not currently mounted|is not a mounted volume/i.test(text);
@@ -1524,33 +1506,63 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 				push(Error(`mount points still tracked after teardown: ${[...points].join(", ")}`));
 				return { mountsCleared, errors };
 			}
+			// Mounts are confirmed gone: former mount directories are local again, safe to clear leftover names.
+			for (const mount of mountSnapshot) {
+				try {
+					for (const name of readdirSync(mount)) rmSync(join(mount, name), { recursive: true, force: true });
+				} catch (error) {
+					push(error);
+				}
+			}
+			const exclusiveOpen = (): string => {
+				try {
+					const fd = openSync(vhdx, "r+");
+					closeSync(fd);
+					return "ok";
+				} catch (error: any) {
+					return String(error?.code ?? error);
+				}
+			};
 			// Detach offlines a volume that mid-test left with no folder mount (/D-only last unmount).
 			// Do not call mountvol with a volume GUID and /P: /P requires a folder mount path.
 			try {
 				writeFileSync(join(dir, "dp.txt"), [`select vdisk file="${vhdx}"`, "detach vdisk"].join("\r\n") + "\r\n");
 				const detach = Bun.spawnSync(["diskpart", "/s", join(dir, "dp.txt")]);
-				if (detach.exitCode !== 0) {
-					const text = `${detach.stdout}${detach.stderr}`;
-					if (!/already detached/i.test(text)) {
-						push(Error(`diskpart detach exited ${detach.exitCode}: ${text}`));
-					}
+				const detachText = `${detach.stdout}${detach.stderr}`.trim();
+				console.log(
+					`[S1-teardown] diskpart detach exit=${detach.exitCode} vhdx=${vhdx} dOnly=${lastMountRemovedWithDOnly} out=${detachText.slice(0, 800)}`,
+				);
+				if (detach.exitCode !== 0 && !/already detached/i.test(detachText)) {
+					push(Error(`diskpart detach exited ${detach.exitCode}: ${detachText}`));
 				}
 			} catch (error) {
 				push(error);
 			}
+			const postDetachOpen = exclusiveOpen();
+			console.log(`[S1-teardown] post-detach exclusive-open=${postDetachOpen} t=${Date.now()}`);
 			// After mounts are cleared and detach succeeds, the VDS/AV lock release is retried for a minute;
 			// hosted runners have held it longer than the old 12 s bound. A still-locked file after that is a cleanup failure.
 			try {
+				let firstExclusiveOkAt: number | undefined;
 				for (let attempt = 0; ; attempt++) {
+					const openState = exclusiveOpen();
+					if (openState === "ok" && firstExclusiveOkAt === undefined) {
+						firstExclusiveOkAt = Date.now();
+						console.log(`[S1-teardown] exclusive-open became ok attempt=${attempt} t=${firstExclusiveOkAt}`);
+					}
 					try {
 						rmSync(vhdx, { force: true });
+						console.log(
+							`[S1-teardown] vhdx rm ok attempt=${attempt} exclusiveFirstOk=${firstExclusiveOkAt ?? "never"} postDetachOpen=${postDetachOpen}`,
+						);
 						break;
 					} catch (error: any) {
 						if (error?.code !== "EBUSY") throw error;
 						if (attempt >= 600) {
 							throw Error(
 								`vhdx still EBUSY after mountvol clear + detach (${vhdx})` +
-									(lastMountRemovedWithDOnly ? " [last mount was /D-only before detach]" : ""),
+									(lastMountRemovedWithDOnly ? " [last mount was /D-only before detach]" : "") +
+									` [postDetachOpen=${postDetachOpen}; exclusiveFirstOk=${firstExclusiveOkAt ?? "never"}; lastExclusive=${openState}]`,
 							);
 						}
 						Bun.sleepSync(100);
