@@ -1560,26 +1560,27 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 					} catch (error: any) {
 						if (error?.code !== "EBUSY") throw error;
 						if (attempt >= 600) {
-							// One-shot read-only lock probe: Attached=True ⇒ VDS still holding the image;
-							// Attached=False + EBUSY ⇒ likely Defender/other process. Keep output short.
+							// One-shot redacted probe only: Attached=true|false|unknown plus event id/time.
+							// Do not print Defender/VDS message bodies (public CI). Attached=false alone is not proof of AV.
 							const ps = [
 								`$p = ${JSON.stringify(vhdx)}`,
-								`try { $i = Get-DiskImage -ImagePath $p -ErrorAction Stop; "Attached=$($i.Attached);OperationalStatus=$($i.OperationalStatus)" } catch { "Get-DiskImage=$($_.Exception.Message)" }`,
+								`try { $i = Get-DiskImage -ImagePath $p -ErrorAction Stop; if ($i.Attached -eq $true) { 'Attached=true' } elseif ($i.Attached -eq $false) { 'Attached=false' } else { 'Attached=unknown' } } catch { 'Attached=unknown' }`,
 								`$since = (Get-Date).AddMinutes(-5)`,
-								`try { Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Windows Defender/Operational'; StartTime=$since} -MaxEvents 8 -ErrorAction Stop | ForEach-Object { "Defender[$($_.TimeCreated.ToString('o'))] id=$($_.Id) $($_.Message -replace '\\s+',' ')" } } catch { "Defender=none:$($_.Exception.Message)" }`,
-								`try { Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName='Virtual Disk Service'; StartTime=$since} -MaxEvents 8 -ErrorAction Stop | ForEach-Object { "VDS[$($_.TimeCreated.ToString('o'))] id=$($_.Id) $($_.Message -replace '\\s+',' ')" } } catch { "VDS=none:$($_.Exception.Message)" }`,
+								`try { Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Windows Defender/Operational'; StartTime=$since} -MaxEvents 5 -ErrorAction Stop | ForEach-Object { 'Defender id=' + $_.Id + ' t=' + $_.TimeCreated.ToUniversalTime().ToString('o') } } catch { 'Defender=none' }`,
+								`try { Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName='Virtual Disk Service'; StartTime=$since} -MaxEvents 5 -ErrorAction Stop | ForEach-Object { 'VDS id=' + $_.Id + ' t=' + $_.TimeCreated.ToUniversalTime().ToString('o') } } catch { 'VDS=none' }`,
 							].join("; ");
 							const probe = Bun.spawnSync(["powershell", "-NoProfile", "-Command", ps], {
 								stdout: "pipe",
 								stderr: "pipe",
+								timeout: 5_000,
 							});
-							const probeText = `${probe.stdout}${probe.stderr}`.trim().slice(0, 4000);
-							console.log(`[S1-teardown] EBUSY lock probe exit=${probe.exitCode}\n${probeText}`);
+							const probeText = `${probe.stdout}`.toString().trim().slice(0, 800);
+							const attached = /Attached=(true|false|unknown)/.exec(probeText)?.[1] ?? "unknown";
+							console.log(`[S1-teardown] EBUSY lock probe exit=${probe.exitCode} attached=${attached}\n${probeText}`);
 							throw Error(
 								`vhdx still EBUSY after mountvol clear + detach (${vhdx})` +
 									(lastMountRemovedWithDOnly ? " [last mount was /D-only before detach]" : "") +
-									` [postDetachOpen=${postDetachOpen}; readWriteFirstOk=${firstReadWriteOkAt ?? "never"}; lastReadWrite=${openState}]` +
-									` [lockProbe=${probeText.replace(/\s+/g, " ").slice(0, 500)}]`,
+									` [postDetachOpen=${postDetachOpen}; readWriteFirstOk=${firstReadWriteOkAt ?? "never"}; lastReadWrite=${openState}; Attached=${attached}]`,
 							);
 						}
 						Bun.sleepSync(100);
