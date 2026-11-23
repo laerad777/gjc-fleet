@@ -161,7 +161,9 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.docs_only == 'false' }}
     runs-on: windows-latest
-    timeout-minutes: 45
+    # Informational only (continue-on-error). Hosted Windows needs ~60–75m of suite time;
+    # 45m cancelled mid-run after operator-exit-codes and hid later failures.
+    timeout-minutes: 90
     continue-on-error: true
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
