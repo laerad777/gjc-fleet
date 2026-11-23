@@ -1415,8 +1415,7 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 	const volume = run(["mountvol", at + "\\", "/L"]).trim();
 	expect(volume).toMatch(/^\\\\\?\\Volume\{[0-9a-f-]+\}\\$/i);
 	const points = new Set([at]);
-	// Mid-test unmount() must use /D on the last mount so a raw Volume{GUID} junction can still resolve.
-	// mountvol /P only accepts a folder mount path (not a volume GUID), so that path is offlined by detach below.
+	// keepOnline last-mount /D is only for the raw Volume{GUID} junction case; default last unmount uses /P.
 	let lastMountRemovedWithDOnly = false;
 	return {
 		mnt: at,
@@ -1427,9 +1426,12 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 			points.add(at);
 			lastMountRemovedWithDOnly = false;
 		},
-		unmount(at: string) {
-			if (points.size === 1 && points.has(at)) lastMountRemovedWithDOnly = true;
-			run(["mountvol", at + "\\", "/D"]);
+		unmount(at: string, opts?: { keepOnline?: boolean }) {
+			const last = points.size === 1 && points.has(at);
+			const removal = last && !opts?.keepOnline ? "/P" : "/D";
+			if (last && removal === "/D") lastMountRemovedWithDOnly = true;
+			else if (!last) lastMountRemovedWithDOnly = false;
+			run(["mountvol", at + "\\", removal]);
 			points.delete(at);
 		},
 		/**
@@ -1593,7 +1595,8 @@ test.skipIf(!elevated)("S1: a volume mounted in a folder (no drive letter): git'
 		rmdirSync(join(f.dir, "jm"));
 		// A volume with no mount point at all, reachable only through a raw junction to its GUID path: its place in
 		// the tree is unknown -> refused (fail closed), never accepted.
-		w2.unmount(w2.mnt);
+		// keepOnline: /D only so the volume GUID stays resolvable; default last-mount unmount uses /P.
+		w2.unmount(w2.mnt, { keepOnline: true });
 		expect(Bun.spawnSync(["cmd", "/c", "mklink", "/J", join(f.dir, "jv"), w2.volume]).exitCode).toBe(0);
 		await rejects(() => resolveGit(f.root, P(join(f.dir, "jv"))), "git-identity-unavailable");
 		rmdirSync(join(f.dir, "jv"));
