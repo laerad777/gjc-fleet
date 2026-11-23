@@ -1429,7 +1429,22 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 		},
 		/** Removes every mount point first: a recursive delete of the fixture must never reach the volume's files. */
 		done() {
-			for (const at of points) Bun.spawnSync(["mountvol", at + "\\", "/D"]);
+			// Do not ignore mountvol /D: a still-mounted folder keeps the VHDX locked (EBUSY on rm).
+			for (const mount of [...points]) {
+				let last = "";
+				for (let attempt = 0; attempt < 50; attempt++) {
+					const del = Bun.spawnSync(["mountvol", mount + "\\", "/D"]);
+					last = `${del.stdout}${del.stderr}`;
+					const listed = Bun.spawnSync(["mountvol", mount + "\\", "/L"]);
+					const listText = `${listed.stdout}${listed.stderr}`;
+					if (listed.exitCode !== 0 || !/Volume\{/i.test(listText)) {
+						points.delete(mount);
+						break;
+					}
+					if (attempt === 49) throw Error(`mountvol /D did not clear ${mount}: exit ${del.exitCode}: ${last}`);
+					Bun.sleepSync(100);
+				}
+			}
 			points.clear();
 			// Detach is best-effort: a prior cleanup or failed attach can leave the VHD already detached (exit 87).
 			writeFileSync(join(dir, "dp.txt"), [`select vdisk file="${vhdx}"`, "detach vdisk"].join("\r\n") + "\r\n");
@@ -1440,14 +1455,13 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 					throw Error(`diskpart detach exited ${detach.exitCode}: ${text}`);
 				}
 			}
-			// Virtual Disk Service can keep the .vhdx locked after detach; wait, then best-effort leave it.
+			// After a confirmed detach, the file can still be briefly locked; wait, then best-effort leave it.
 			for (let attempt = 0; ; attempt++) {
 				try {
 					rmSync(vhdx, { force: true });
 					return;
 				} catch (error: any) {
 					if (error?.code !== "EBUSY") throw error;
-					// Hosted runners sometimes hold the handle >3s; do not fail S1 assertions on teardown.
 					if (attempt >= 120) return;
 					Bun.sleepSync(100);
 				}
