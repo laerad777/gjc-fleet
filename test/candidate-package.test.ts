@@ -1406,19 +1406,30 @@ const run = (cmd: string[]) => {
 function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 	mkdirSync(dir, { recursive: true });
 	mkdirSync(at, { recursive: true });
-	const vhdx = join(dir, "v.vhdx");
+	// Always talk to DiskPart with one long-path spelling; mixing RUNNER~1 short paths with runneradmin
+	// long paths made select succeed while detach reported "already detached" and left the file EBUSY.
+	const dirLong = realpathSync.native(dir);
+	const mountAt = realpathSync.native(at);
+	const vhdx = join(dirLong, "v.vhdx");
 	const diskpart = (...lines: string[]) => {
-		writeFileSync(join(dir, "dp.txt"), lines.join("\r\n") + "\r\n");
-		return run(["diskpart", "/s", join(dir, "dp.txt")]);
+		writeFileSync(join(dirLong, "dp.txt"), lines.join("\r\n") + "\r\n");
+		return run(["diskpart", "/s", join(dirLong, "dp.txt")]);
 	};
-	diskpart(`create vdisk file="${vhdx}" maximum=512 type=expandable`, `select vdisk file="${vhdx}"`, "attach vdisk", "create partition primary", `format fs=${fs} quick label=CANDS1`, `assign mount="${at}"`);
-	const volume = run(["mountvol", at + "\\", "/L"]).trim();
+	diskpart(
+		`create vdisk file="${vhdx}" maximum=512 type=expandable`,
+		`select vdisk file="${vhdx}"`,
+		"attach vdisk",
+		"create partition primary",
+		`format fs=${fs} quick label=CANDS1`,
+		`assign mount="${mountAt}"`,
+	);
+	const volume = run(["mountvol", mountAt + "\\", "/L"]).trim();
 	expect(volume).toMatch(/^\\\\\?\\Volume\{[0-9a-f-]+\}\\$/i);
-	const points = new Set([at]);
+	const points = new Set([mountAt]);
 	// keepOnline last-mount /D is only for the raw Volume{GUID} junction case; default last unmount uses /P.
 	let lastMountRemovedWithDOnly = false;
 	return {
-		mnt: at,
+		mnt: mountAt,
 		volume,
 		mount(at: string) {
 			mkdirSync(at, { recursive: true });
@@ -1456,7 +1467,7 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 			// Move cwd off the volume before offline; never recursively delete through a live mount.
 			try {
 				const cwd = process.cwd();
-				if (under(cwd, dir) || [...points].some((m) => under(cwd, m))) process.chdir(tmpdir());
+				if (under(cwd, dirLong) || [...points].some((m) => under(cwd, m))) process.chdir(tmpdir());
 			} catch (error) {
 				push(error);
 			}
@@ -1515,7 +1526,7 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 				}
 			}
 			// openSync("r+") is a shared read-write open on Windows, not CreateFileW with zero share mode.
-			const fixtureVhdx = `${basename(dir)}/${basename(vhdx)}`;
+			const fixtureVhdx = `${basename(dirLong)}/${basename(vhdx)}`;
 			const readWriteOpen = (): string => {
 				try {
 					const fd = openSync(vhdx, "r+");
@@ -1525,14 +1536,27 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 					return String(error?.code ?? error);
 				}
 			};
+			const runDetach = (lines: string[]) => {
+				writeFileSync(join(dirLong, "dp.txt"), lines.join("\r\n") + "\r\n");
+				return Bun.spawnSync(["diskpart", "/s", join(dirLong, "dp.txt")]);
+			};
 			// Detach offlines a volume that mid-test left with no folder mount (/D-only last unmount).
-			// Do not call mountvol with a volume GUID and /P: /P requires a folder mount path.
+			// Exit 87 "already detached" after a successful select still left the VHDX EBUSY on runners; cycle
+			// attach→detach with the same long path so VDS releases the file handle.
 			try {
-				writeFileSync(join(dir, "dp.txt"), [`select vdisk file="${vhdx}"`, "detach vdisk"].join("\r\n") + "\r\n");
-				const detach = Bun.spawnSync(["diskpart", "/s", join(dir, "dp.txt")]);
-				const detachText = `${detach.stdout}${detach.stderr}`.trim();
-				// Log exit/dOnly only—diskpart bodies can echo the absolute VHDX path.
-				console.log(`[S1-teardown] diskpart detach exit=${detach.exitCode} vhdx=${fixtureVhdx} dOnly=${lastMountRemovedWithDOnly}`);
+				let detach = runDetach([`select vdisk file="${vhdx}"`, "detach vdisk"]);
+				let detachText = `${detach.stdout}${detach.stderr}`.trim();
+				const already = /already detached/i.test(detachText);
+				console.log(
+					`[S1-teardown] diskpart detach exit=${detach.exitCode} already=${already} vhdx=${fixtureVhdx} dOnly=${lastMountRemovedWithDOnly}`,
+				);
+				if (detach.exitCode !== 0 && already) {
+					detach = runDetach([`select vdisk file="${vhdx}"`, "attach vdisk", "detach vdisk"]);
+					detachText = `${detach.stdout}${detach.stderr}`.trim();
+					console.log(
+						`[S1-teardown] diskpart reattach-detach exit=${detach.exitCode} already=${/already detached/i.test(detachText)} vhdx=${fixtureVhdx}`,
+					);
+				}
 				if (detach.exitCode !== 0 && !/already detached/i.test(detachText)) {
 					push(Error(`diskpart detach exited ${detach.exitCode} for ${fixtureVhdx}`));
 				}
