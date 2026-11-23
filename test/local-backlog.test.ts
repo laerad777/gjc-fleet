@@ -2,7 +2,7 @@ import { test, expect } from "bun:test";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { classify, isReportPath, reportPathKey } from "../scripts/local-backlog";
+import { classify, isReportPath } from "../scripts/local-backlog";
 
 test("backlog classification never promotes report prose or missing receipts", () => {
  expect(classify("report", "CLEAN tests passed")).toBe("unknown_missing_receipt");
@@ -14,13 +14,15 @@ test("backlog classification never promotes report prose or missing receipts", (
  expect(classify("run", "CLEAN", { status: "completed" })).toBe("collected_unverified");
 });
 
-test("isReportPath matches nested reports whether keys use / or Windows \\", () => {
+test("isReportPath matches by basename for / and Windows \\ inventory keys", () => {
  expect(isReportPath("report-root.md")).toBe(true);
  expect(isReportPath("docs/reports/report-abc.md")).toBe(true);
  expect(isReportPath("docs\\reports\\report-abc.md")).toBe(true);
  expect(isReportPath("docs\\reports\\RESULT.md")).toBe(false);
  expect(isReportPath("docs\\reports\\not-report-abc.md")).toBe(false);
- expect(reportPathKey("docs\\reports\\report-abc.md")).toBe("docs/reports/report-abc.md");
+ // A POSIX filename that literally contains `\` is not rewritten into a nested path.
+ expect(isReportPath("weird\\name-not-a-report.md")).toBe(false);
+ expect(isReportPath("weird\\report-kept.md")).toBe(true);
 });
 
 test("local backlog lists report-*.md under docs/reports and still lists a root report", async () => {
@@ -31,15 +33,25 @@ test("local backlog lists report-*.md under docs/reports and still lists a root 
   await writeFile(join(root, "docs", "reports", "RESULT.md"), "not a report id\n");
   await writeFile(join(root, "docs", "reports", "not-report-abc.md"), "prefix does not count\n");
   await writeFile(join(root, "report-root.md"), "root report\n");
-  const proc = Bun.spawn(["bun", join(import.meta.dir, "../scripts/local-backlog.ts")], { cwd: root, stdout: "pipe", stderr: "pipe" });
-  const [stdout, stderr, exit] = await Promise.all([new Response(proc.stdout).text(), new Response(proc.stderr).text(), proc.exited]);
+  const proc = Bun.spawn(["bun", join(import.meta.dir, "../scripts/local-backlog.ts")], {
+   cwd: root,
+   stdout: "pipe",
+   stderr: "pipe",
+  });
+  const [stdout, stderr, exit] = await Promise.all([
+   new Response(proc.stdout).text(),
+   new Response(proc.stderr).text(),
+   proc.exited,
+  ]);
   expect(stderr).toBe("");
   expect(exit).toBe(0);
   const body = JSON.parse(stdout);
-  expect(body.reports.map((report: { path: string }) => report.path).sort()).toEqual([
-   "docs/reports/report-abc.md",
-   "report-root.md",
-  ]);
+  const paths = body.reports.map((report: { path: string }) => report.path).sort();
+  expect(paths).toEqual(["docs/reports/report-abc.md", "report-root.md"]);
+  // Report path keys stay aligned with inventory/receipts (no slash rewriting).
+  for (const report of body.reports as { path: string; sha256: string }[]) {
+   expect(body.files[report.path]).toBe(report.sha256);
+  }
  } finally {
   await rm(root, { recursive: true, force: true });
  }
