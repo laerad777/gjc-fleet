@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { spawnSync, type SpawnSyncReturns } from "node:child_process";
+import { type SpawnSyncReturns } from "node:child_process";
+import { existsSync, statSync } from "node:fs";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -209,34 +210,39 @@ describe("release-probe-readonly helpers", () => {
 	});
 
 	test("readTreeHeadFromGitDir does not follow a gitfile", async () => {
-		const realSpawn: SpawnFn = (cmd, args, opts) =>
-			spawnSync(cmd, args, opts);
-		const binsRes = resolveProbeBinsTimed(realSpawn, 3_000);
-		// Linux CI may lack launchctl — skip full resolve; use test/head only path via fake for missing bins
-		if (!binsRes.ok) {
-			// Minimal: only exercise gitfile with injected bins that point at real test/head
-			const testBin = "/bin/test";
-			const headBin = "/usr/bin/head";
-			const bins: ProbeBins = { ...FAKE_BINS, test: testBin, head: headBin };
-			const dir = await mkdtemp(join(tmpdir(), "release-probe-"));
-			const gitfile = join(dir, ".git");
-			await writeFile(gitfile, "gitdir: /elsewhere\n");
-			expect(
-				readTreeHeadFromGitDir(gitfile, {
-					spawn: realSpawn,
-					bins,
-					fileTimeoutMs: 3_000,
-				}),
-			).toEqual({ kind: "unreadable" });
-			return;
-		}
 		const dir = await mkdtemp(join(tmpdir(), "release-probe-"));
 		const gitfile = join(dir, ".git");
 		await writeFile(gitfile, "gitdir: /elsewhere\n");
+		// Injectable test/head: real /bin/test is absent on Windows and must not be required.
+		const spawn: SpawnFn = (cmd, args) => {
+			const name = cmdName(cmd);
+			if (name === "test") {
+				const flag = args[0];
+				const path = args[1] ?? "";
+				if (flag === "-e") return okSpawn("", existsSync(path) ? 0 : 1);
+				if (flag === "-f") {
+					try {
+						return okSpawn("", statSync(path).isFile() ? 0 : 1);
+					} catch {
+						return okSpawn("", 1);
+					}
+				}
+				return failSpawn(2);
+			}
+			if (name === "head") {
+				try {
+					const path = args[args.length - 1] ?? "";
+					return okSpawn(statSync(path).isFile() ? "ref: refs/heads/main\n" : "");
+				} catch {
+					return failSpawn(1);
+				}
+			}
+			return failSpawn(1);
+		};
 		expect(
 			readTreeHeadFromGitDir(gitfile, {
-				spawn: realSpawn,
-				bins: binsRes.value,
+				spawn,
+				bins: FAKE_BINS,
 				fileTimeoutMs: 3_000,
 			}),
 		).toEqual({ kind: "unreadable" });
