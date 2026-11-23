@@ -182,7 +182,7 @@ test("node stability is displayed per node with the gating mode, labelled, never
 	snapshot.nodes[0].health = { gating: "observe", stable: false, failingDimensions: ["reachable", "consecutive_observations"], consecutiveGood: 1, required: 5, neverObservable: [], lastFailure: { at: Date.now() - 120_000, dimensions: ["reachable"] } };
 	snapshot.nodeHealth = { gating: "observe" };
 	let nodes = (await page(snapshot)).element("nodes").innerHTML;
-	expect(nodes).toContain("<b>Node unstable</b> · Coordinator reachability failed, recovering, Too few stable observations · stable observations <b>1/5</b> · last failure 2m ago · observe only · not applied to auto-assignment");
+	expect(nodes).toContain("<b>Node unstable</b> · Coordinator reachability failed, recovering, Too few stable observations · stable observations <b>1/5</b> · last failure 2m ago · monitoring only · not applied to auto-assignment");
 	for (const code of ["reachable", "consecutive_observations", "observe"]) expect(nodes).not.toContain(code);
 	snapshot.nodes[0].health = { gating: "enforce", stable: true, failingDimensions: [], consecutiveGood: 3, required: 3, neverObservable: [] };
 	snapshot.nodeHealth = { gating: "enforce", operator: "ops", reason: "rollout", at: Date.now() };
@@ -199,7 +199,7 @@ test("a node that can never observe a dimension says so, and that gating would e
 	snapshot.nodes[0].health = { gating: "observe", stable: false, failingDimensions: ["unobserved:brokerSessionListOk"], consecutiveGood: 6, required: 3, neverObservable: ["brokerSessionListOk"] };
 	snapshot.nodeHealth = { gating: "observe" };
 	const nodes = (await page(snapshot)).element("nodes").innerHTML;
-	expect(nodes).toContain("<b>Node unstable</b> · Broker session list unobserved · stable observations <b>6/3</b> · observe only · not applied to auto-assignment · <b>Broker session list unobservable</b> · permanently excluded from auto-assignment once applied");
+	expect(nodes).toContain("<b>Node unstable</b> · Broker session list unobserved · stable observations <b>6/3</b> · monitoring only · not applied to auto-assignment · <b>Broker session list unobservable</b> · permanently excluded from auto-assignment once applied");
 	expect(nodes).not.toContain("brokerSessionListOk");
 	snapshot.nodes[0].health.neverObservable = [];
 	expect((await page(snapshot)).element("nodes").innerHTML).not.toContain("unobservable");

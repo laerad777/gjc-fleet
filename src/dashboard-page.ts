@@ -543,7 +543,7 @@ footer{text-align:center;font-size:11px;color:var(--dim)}
 		var ex=[];for(var r in n.exclusions)ex.push(esc(reasonLabel(r))+' ×'+n.exclusions[r]);
 		var h=n.health,nh='';
 		if(h)nh='<div class="adm nh '+(h.stable?'open':'hold')+'"><i></i><span>'+(h.stable?'<b>Node stable</b>':'<b>Node unstable</b> · '+esc(h.failingDimensions.map(reasonLabel).join(', ')))+' · stable observations <b>'+h.consecutiveGood+'/'+h.required+'</b>'+
-			(h.lastFailure?' · last failure '+esc(ago(h.lastFailure.at)):'')+' · '+(h.gating==='enforce'?'applied to auto-assignment':'observe only · not applied to auto-assignment')+
+			(h.lastFailure?' · last failure '+esc(ago(h.lastFailure.at)):'')+' · '+(h.gating==='enforce'?'applied to auto-assignment':'monitoring only · not applied to auto-assignment')+
 			((h.neverObservable||[]).length?' · <b>'+esc(h.neverObservable.map(function(d){return HEALTH_DIM[d]||d}).join(', '))+' unobservable</b> · permanently excluded from auto-assignment once applied':'')+'</span></div>';
 		var p=n.probe,meta='';
 		if(p&&p.ok)meta+='<b>Measured</b> '+esc(p.version||'')+(p.sessionsOk?' · sessions '+p.liveSessions+' active / '+p.totalSessions:p.sessionsError?' · session query failed: '+esc(p.sessionsError):'')+'<br>';
