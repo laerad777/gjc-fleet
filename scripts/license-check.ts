@@ -6,7 +6,7 @@ const INTEGRITY = /^sha512-[A-Za-z0-9+/]{86}==$/;
 function parseLock(lockText: string): { roots: Record<string, string>; packages: Map<string, { name: string; version: string; integrity: string; deps: string[] }> } {
 	const packages = new Map<string, { name: string; version: string; integrity: string; deps: string[] }>();
 	const line = /^\s*"([^"]+)": \["(@?[^"@]+)@([^"]+)", "", (\{.*\}), "(sha512-[^"]+)"\],?\s*$/;
-	for (const raw of lockText.split("\n")) {
+	for (const raw of lockText.split(/\r?\n/)) {
 		const m = line.exec(raw);
 		if (!m) continue;
 		demand(!packages.has(m[1]!), "LOCKFILE_DUPLICATE", "bun.lock lists a package key twice");

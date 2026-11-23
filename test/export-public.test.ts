@@ -365,7 +365,10 @@ test("an fs error preparing --out (its parent is a regular file) exits 2 with on
 	writeFileSync(join(parent, "plain-file"), "mine");
 	const r = exportTo(["--repo", src, "--out", join(parent, "plain-file", "o")]);
 	expect(r.code).toBe(2);
-	expect(r.stderr.trim().split("\n").at(-1)).toBe("export-public: cannot create --out (ENOTDIR)");
+	// Windows reports ENOENT when a path segment is a file; POSIX often ENOTDIR.
+	expect(r.stderr.trim().split(/\r?\n/).at(-1)).toMatch(
+		/^export-public: cannot create --out \((?:ENOTDIR|ENOENT)\)$/,
+	);
 	expect(r.stderr).not.toContain("    at ");
 	expect(r.stderr).not.toContain("plain-file");
 	expect(readFileSync(join(parent, "plain-file"), "utf8")).toBe("mine");
