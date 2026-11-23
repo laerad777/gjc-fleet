@@ -133,6 +133,9 @@ test("per-node budget and backoff: a failing node backs off, its own tasks are n
 	const running = d.run();
 	cleanups.push(async () => { d.stop(); await running.catch(() => {}); });
 	await until(() => badCalls >= 2 && (stats.reads.get(`session-${good}`) ?? 0) > 10, 10_000);
+	// Keep observing after the second bad call: without backoff, ~200 ms cycles would push past 5 in 800 ms.
+	const sinceSecondBad = Date.now();
+	await until(() => Date.now() - sinceSecondBad >= 800, 2_000);
 	d.stop();
 	await running;
 	expect(badCalls).toBeGreaterThanOrEqual(2);
@@ -181,8 +184,14 @@ test("repeated OBSERVATION_UNAVAILABLE stretches the task interval, notes operat
 		const notes = f.store.events(id).filter((e) => e.kind === "daemon_note");
 		return abandoned.length > 2 && notes.some((e) => (e.data as any).note === "observation_repeated_failure_operator_recovery_required");
 	}, 10_000);
+	const abandonedAtTrigger = f.store.events(id).filter((e) => e.kind === "abandoned_poll").length;
+	// Keep observing after the recovery note: without failure stretching, ~20 ms cycles would add many abandons in 600 ms.
+	const sinceNote = Date.now();
+	await until(() => Date.now() - sinceNote >= 600, 2_000);
 	d.stop();
 	await running;
+	const abandonedAfter = f.store.events(id).filter((e) => e.kind === "abandoned_poll").length;
+	expect(abandonedAfter - abandonedAtTrigger).toBeLessThanOrEqual(8);
 	const after = f.store.task(id)!;
 	expect(after.phase).toBe(before.phase);
 	expect(after.held).toBe(true);
