@@ -93,6 +93,8 @@ test("fairness: a node at 90 s per call (scaled 1:100 to 900 ms) never delays ot
 	const reads = (nodeId: keyof typeof ids) => ids[nodeId].map((id) => stats.reads.get(`session-${id}`) ?? 0);
 	await until(() => Math.min(...reads("slow-win")) >= 1 && Math.min(...reads("fast-a")) >= 10 && Math.min(...reads("fast-b")) >= 10, 20_000);
 	const elapsed = Date.now() - started;
+	// Without per-node fairness the slow 900 ms calls hold the pass; fast nodes then miss this bound.
+	expect(elapsed).toBeLessThan(5_000);
 	d.stop();
 	await running;
 	// One in-flight call per node and one observation per task at any time.
@@ -318,6 +320,9 @@ test("a queued task no node can admit is deferred without any node call, with bo
 	const running = d.run();
 	cleanups.push(async () => { d.stop(); await running.catch(() => {}); });
 	await until(() => sampled >= 2, 5_000);
+	// Keep observing after the second sample: without deferral, ~20 ms cycles would push past 10 in 600 ms.
+	const sinceSecond = Date.now();
+	await until(() => Date.now() - sinceSecond >= 600, 2_000);
 	d.stop();
 	await running;
 	expect(f.store.task(q.id)!.phase).toBe("queued");
