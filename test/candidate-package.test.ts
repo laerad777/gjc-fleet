@@ -1415,6 +1415,9 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 	const volume = run(["mountvol", at + "\\", "/L"]).trim();
 	expect(volume).toMatch(/^\\\\\?\\Volume\{[0-9a-f-]+\}\\$/i);
 	const points = new Set([at]);
+	// Mid-test unmount() must use /D on the last mount so a raw Volume{GUID} junction can still resolve.
+	// mountvol /P only accepts a folder mount path (not a volume GUID), so that path is offlined by detach below.
+	let lastMountRemovedWithDOnly = false;
 	return {
 		mnt: at,
 		volume,
@@ -1422,8 +1425,10 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 			mkdirSync(at, { recursive: true });
 			run(["mountvol", at + "\\", volume]);
 			points.add(at);
+			lastMountRemovedWithDOnly = false;
 		},
 		unmount(at: string) {
+			if (points.size === 1 && points.has(at)) lastMountRemovedWithDOnly = true;
 			run(["mountvol", at + "\\", "/D"]);
 			points.delete(at);
 		},
@@ -1482,27 +1487,8 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 				push(Error(`mount points still tracked after teardown: ${[...points].join(", ")}`));
 				return { mountsCleared, errors };
 			}
-			// Mid-test unmount() uses /D even on the last mount (needed so a raw Volume{GUID} junction can still
-			// resolve). That leaves the volume online with no tracked mount, so offline it by GUID before detach.
-			try {
-				let lastDel = "";
-				let offlined = false;
-				for (let attempt = 0; attempt < 50; attempt++) {
-					const del = Bun.spawnSync(["mountvol", volume, "/P"]);
-					lastDel = `${del.stdout}${del.stderr}`;
-					if (del.exitCode === 0 || explicitNotMounted(lastDel) || /already.*offline|not.*mounted/i.test(lastDel)) {
-						offlined = true;
-						break;
-					}
-					Bun.sleepSync(100);
-				}
-				if (!offlined) {
-					push(Error(`mountvol /P on volume GUID did not confirm offline for ${volume}: ${lastDel}`));
-				}
-			} catch (error) {
-				push(error);
-			}
-			// Detach is best-effort: a prior cleanup or failed attach can leave the VHD already detached (exit 87).
+			// Detach offlines a volume that mid-test left with no folder mount (/D-only last unmount).
+			// Do not call mountvol with a volume GUID and /P: /P requires a folder mount path.
 			try {
 				writeFileSync(join(dir, "dp.txt"), [`select vdisk file="${vhdx}"`, "detach vdisk"].join("\r\n") + "\r\n");
 				const detach = Bun.spawnSync(["diskpart", "/s", join(dir, "dp.txt")]);
@@ -1525,7 +1511,10 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 					} catch (error: any) {
 						if (error?.code !== "EBUSY") throw error;
 						if (attempt >= 600) {
-							throw Error(`vhdx still EBUSY after mountvol clear + detach (${vhdx})`);
+							throw Error(
+								`vhdx still EBUSY after mountvol clear + detach (${vhdx})` +
+									(lastMountRemovedWithDOnly ? " [last mount was /D-only before detach]" : ""),
+							);
 						}
 						Bun.sleepSync(100);
 					}
