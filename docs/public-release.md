@@ -74,16 +74,14 @@ bun scripts/export-public.ts --out PATH [--repo PATH] [--exclude FILE] [--deny-l
 
 ## CI
 
-`.github/workflows/ci.yml` runs on pull requests only, with read-only `contents` permission, Bun 1.4.4 and no secrets. It uses no self-hosted runner, and the two actions are pinned to full commit SHAs. A newer push to the same pull request cancels the older run.
+`.github/workflows/ci.yml` runs on pull requests only, with read-only `contents` permission, Bun 1.4.4 and no secrets. It uses no self-hosted runner, and every action is pinned to a full commit SHA. A newer push to the same pull request cancels the older run.
 
-The `test` job runs on three GitHub-hosted targets: `ubuntu-latest`, `macos-latest` and `windows-latest`. Its steps:
+Jobs:
 
-1. `bun install --frozen-lockfile`
-2. `bunx tsc --noEmit`
-3. `bunx tsc --noEmit -p tsconfig.test.json`
-4. `bun scripts/privacy-scan.ts`
-5. `bun run license:check`
-6. `bun test test`
+- `static` runs on `ubuntu-latest`: it checks Git is at least 2.44, lints the workflow, then runs `bun install --frozen-lockfile`, `bunx tsc --noEmit`, `bunx tsc --noEmit -p tsconfig.test.json`, `bun run build` and `bun src/cli.ts --help`.
+- `security` runs on `ubuntu-latest`: `bun scripts/privacy-scan.ts`, `bun run license:check`, then a secret scan of the pull request commits that never prints what it finds.
+- `test` runs on `ubuntu-latest`, `macos-latest` and `windows-latest`: `git --version`, `bun install --frozen-lockfile`, `bun test test`.
+- `PR gate` passes only when `static`, `security` and `test` all succeed.
 
 The Windows target is informational (`continue-on-error`) until the hosted suite passes there reliably. The 11 tests in `test/windows-native.test.ts` need a real NTFS fixture directory (`FLEET_NATIVE_TEST_ROOT`) and are skipped in CI; run them by hand on an isolated, single-use Windows x64 machine.
 
