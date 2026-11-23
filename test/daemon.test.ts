@@ -946,10 +946,13 @@ test("F7/M12: under rollback the daemon runs no queue pass and no return, and st
 	expect(stats.reads.get(`session-${active}`)!).toBeGreaterThanOrEqual(1);
 }, 10_000);
 
-/** A Coordinator transport for the preflight probe: logs its name, answers nothing for `ms`, exits (fails closed). */
+/** A Coordinator transport for the preflight probe: logs its name and start/end times, answers nothing for `ms`, exits (fails closed). */
 function sleepyTransport(dir: string, log: string, name: string, ms: number) {
 	const script = join(dir, "sleepy.ts");
-	writeFileSync(script, 'import { appendFileSync } from "node:fs";\nconst [log, name, ms] = process.argv.slice(2);\nappendFileSync(log, name + "\\n");\nawait Bun.sleep(Number(ms));\n');
+	writeFileSync(
+		script,
+		'import { appendFileSync } from "node:fs";\nconst [log, name, ms] = process.argv.slice(2);\nconst t0 = Date.now();\nappendFileSync(log, name + "\\n");\nappendFileSync(log, `${name}:start:${t0}\\n`);\nawait Bun.sleep(Number(ms));\nappendFileSync(log, `${name}:end:${Date.now()}\\n`);\n',
+	);
 	return { command: process.execPath, args: [script, log, name, String(ms)] };
 }
 /** Nodes "fast" (one active task) and "slow" (preflight probe `slowProbeMs`), plus three queued tasks admissible by resources. */
@@ -968,9 +971,13 @@ function placementFixture(slowProbeMs: number) {
 for (const scenario of ["slow probe", "unmeasurable"] as const) test(`R1 (${scenario}): while a queue pass places on a slow or unreachable node, the other node keeps its observation cadence`, async () => {
 	const f = placementFixture(scenario === "slow probe" ? 1_500 : 1);
 	const stats = fakeCoordinator(f.fleet, () => 2);
+	let slowSampleStart: number | undefined;
+	let slowSampleEnd: number | undefined;
 	const sample = async (n: NodeConfig) => {
 		if (n.id === "slow" && scenario === "unmeasurable") {
+			slowSampleStart = Date.now();
 			await Bun.sleep(1_000);
+			slowSampleEnd = Date.now();
 			return { ok: false as const, at: Date.now(), error: "unreachable" };
 		}
 		return { ...headroom([n.id], 3).samples.get(n.id)!, at: Date.now() };
@@ -981,8 +988,11 @@ for (const scenario of ["slow probe", "unmeasurable"] as const) test(`R1 (${scen
 	cleanups.push(async () => { d.stop(); await running.catch(() => {}); });
 	await until(() => {
 		const calls = stats.nodeCalls.get("fast") ?? [];
-		const slowOk = scenario !== "slow probe" || f.probes("slow") >= 1;
-		return calls.length >= 10 && f.probes("fast") >= 1 && slowOk;
+		if (scenario === "unmeasurable") {
+			// Do not stop until the slow sample has actually begun; otherwise "overlap" is vacuous.
+			return slowSampleStart != null && calls.length >= 10 && f.probes("fast") >= 1;
+		}
+		return calls.length >= 10 && f.probes("fast") >= 1 && f.probes("slow") >= 1;
 	}, 20_000);
 	const stoppedAt = Date.now();
 	d.stop();
@@ -1004,8 +1014,25 @@ for (const scenario of ["slow probe", "unmeasurable"] as const) test(`R1 (${scen
 	expect(stats.other).toEqual([]);
 	// Queue passes ran and probed: the slow node only when its sample succeeded, never when it failed.
 	expect(f.probes("fast")).toBeGreaterThanOrEqual(1);
-	if (scenario === "slow probe") expect(f.probes("slow")).toBeGreaterThanOrEqual(1);
-	else expect(f.probes("slow")).toBe(0);
+	let slowStart = slowSampleStart;
+	let slowEnd = slowSampleEnd;
+	if (scenario === "slow probe") {
+		expect(f.probes("slow")).toBeGreaterThanOrEqual(1);
+		const lines = readFileSync(join(f.dir, "probes.log"), "utf8").split("\n");
+		const startLine = lines.find((l) => l.startsWith("slow:start:"));
+		const endLine = lines.find((l) => l.startsWith("slow:end:"));
+		expect(startLine).toBeDefined();
+		expect(endLine).toBeDefined();
+		slowStart = Number(startLine!.slice("slow:start:".length));
+		slowEnd = Number(endLine!.slice("slow:end:".length));
+	} else {
+		expect(f.probes("slow")).toBe(0);
+		expect(slowStart).toBeDefined();
+		expect(slowEnd).toBeDefined();
+	}
+	expect(slowEnd!).toBeGreaterThan(slowStart!);
+	// Fast observations must actually overlap the slow work window, not merely finish after it starts.
+	expect(calls.some((c) => c.end > slowStart! && c.start < slowEnd!)).toBe(true);
 }, 20_000);
 
 test("R1: a queue pass measures each node at most once, keeps a failed sample for the pass and never probes that node", async () => {
