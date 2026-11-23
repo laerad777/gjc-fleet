@@ -1,5 +1,5 @@
 import { readdir, lstat } from "node:fs/promises";
-import { resolve, join, relative } from "node:path";
+import { resolve, join, relative, basename } from "node:path";
 import { createHash } from "node:crypto";
 import { spawnTrusted } from "../src/spawn";
 
@@ -28,12 +28,12 @@ export function classify(id: string, text: string | undefined, receipt?: { statu
 }
 
 /**
- * Match report-*.md by basename only so Windows `\` inventory keys still
- * qualify, without rewriting path keys (files/receipts stay aligned).
+ * Match report-*.md with the host basename so Windows `\` inventory keys
+ * still qualify, while a POSIX name that literally contains `\` is not
+ * split. Path keys in files/receipts stay as inventory wrote them.
  */
 export function isReportPath(path: string): boolean {
- const base = path.replaceAll("\\", "/").split("/").pop() ?? path;
- return /^report-.*\.md$/.test(base);
+ return /^report-.*\.md$/.test(basename(path));
 }
 
 // This command reads only local files and executes only this node's local tests/build.

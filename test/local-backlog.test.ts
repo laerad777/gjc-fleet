@@ -14,15 +14,20 @@ test("backlog classification never promotes report prose or missing receipts", (
  expect(classify("run", "CLEAN", { status: "completed" })).toBe("collected_unverified");
 });
 
-test("isReportPath matches by basename for / and Windows \\ inventory keys", () => {
+test("isReportPath matches with the host basename; inventory keys keep their separators", () => {
  expect(isReportPath("report-root.md")).toBe(true);
  expect(isReportPath("docs/reports/report-abc.md")).toBe(true);
- expect(isReportPath("docs\\reports\\report-abc.md")).toBe(true);
- expect(isReportPath("docs\\reports\\RESULT.md")).toBe(false);
- expect(isReportPath("docs\\reports\\not-report-abc.md")).toBe(false);
- // A POSIX filename that literally contains `\` is not rewritten into a nested path.
- expect(isReportPath("weird\\name-not-a-report.md")).toBe(false);
- expect(isReportPath("weird\\report-kept.md")).toBe(true);
+ if (process.platform === "win32") {
+  expect(isReportPath("docs\\reports\\report-abc.md")).toBe(true);
+  expect(isReportPath("docs\\reports\\RESULT.md")).toBe(false);
+  expect(isReportPath("docs\\reports\\not-report-abc.md")).toBe(false);
+ } else {
+  // On POSIX `\` is a legal filename character, not a separator.
+  expect(isReportPath("docs\\reports\\report-abc.md")).toBe(false);
+  expect(isReportPath("weird\\name-not-a-report.md")).toBe(false);
+  expect(isReportPath("weird\\report-kept.md")).toBe(false);
+  expect(isReportPath("report-kept.md")).toBe(true);
+ }
 });
 
 test("local backlog lists report-*.md under docs/reports and still lists a root report", async () => {
