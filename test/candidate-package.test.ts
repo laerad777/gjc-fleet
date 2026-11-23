@@ -1446,7 +1446,7 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 					rmSync(vhdx, { force: true });
 					return;
 				} catch (error: any) {
-					if (error?.code !== "EBUSY" || attempt >= 50) throw error;
+					if (error?.code !== "EBUSY" || attempt >= 30) throw error;
 					Bun.sleepSync(100);
 				}
 			}
