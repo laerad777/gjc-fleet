@@ -88,9 +88,13 @@ test("fairness: a node at 90 s per call (scaled 1:100 to 900 ms) never delays ot
 	const stats = fakeCoordinator(f.fleet, (nodeId) => (nodeId === "slow-win" ? 900 : 20));
 	const d = daemon(f.fleet);
 	const started = Date.now();
-	await runFor(d, 3_300);
-	const elapsed = Date.now() - started;
+	const running = d.run();
+	cleanups.push(async () => { d.stop(); await running.catch(() => {}); });
 	const reads = (nodeId: keyof typeof ids) => ids[nodeId].map((id) => stats.reads.get(`session-${id}`) ?? 0);
+	await until(() => Math.min(...reads("slow-win")) >= 1 && Math.min(...reads("fast-a")) >= 10 && Math.min(...reads("fast-b")) >= 10, 20_000);
+	const elapsed = Date.now() - started;
+	d.stop();
+	await running;
 	// One in-flight call per node and one observation per task at any time.
 	for (const nodeId of Object.keys(ids)) expect(stats.maxNodeConcurrency.get(nodeId)).toBe(1);
 	expect(stats.maxTaskConcurrency).toBe(1);
@@ -109,7 +113,7 @@ test("fairness: a node at 90 s per call (scaled 1:100 to 900 ms) never delays ot
 	// Graceful stop let the slow in-flight call finish; nothing left unknown or abandoned.
 	for (const id of Object.values(ids).flat()) expect(f.store.task(id)!.phase).toBe("active");
 	expect(f.store.daemonStatus()).toBeUndefined();
-}, 20_000);
+}, 30_000);
 
 test("per-node budget and backoff: a failing node backs off, its own tasks are not marked unknown, others continue", async () => {
 	const f = fixture(["good", "bad"]);
@@ -124,7 +128,11 @@ test("per-node budget and backoff: a failing node backs off, its own tasks are n
 		return connect(n, required);
 	};
 	const d = daemon(f.fleet, { backoffMs: 200, backoffMaxMs: 400, nodeGapMs: (n) => (n.id === "good" ? 10 : 0) });
-	await runFor(d, 1_000);
+	const running = d.run();
+	cleanups.push(async () => { d.stop(); await running.catch(() => {}); });
+	await until(() => badCalls >= 2 && (stats.reads.get(`session-${good}`) ?? 0) > 10, 10_000);
+	d.stop();
+	await running;
 	expect(badCalls).toBeGreaterThanOrEqual(2);
 	expect(badCalls).toBeLessThanOrEqual(5);
 	expect(f.store.task(bad)!.phase).toBe(badBefore.phase);
@@ -164,7 +172,15 @@ test("repeated OBSERVATION_UNAVAILABLE stretches the task interval, notes operat
 			if (row.event === "noted" || row.event === "observation_failed") events.push({ event: String(row.event), note: row.note !== undefined ? String(row.note) : undefined });
 		},
 	});
-	await runFor(d, 900);
+	const running = d.run();
+	cleanups.push(async () => { d.stop(); await running.catch(() => {}); });
+	await until(() => {
+		const abandoned = f.store.events(id).filter((e) => e.kind === "abandoned_poll");
+		const notes = f.store.events(id).filter((e) => e.kind === "daemon_note");
+		return abandoned.length > 2 && notes.some((e) => (e.data as any).note === "observation_repeated_failure_operator_recovery_required");
+	}, 10_000);
+	d.stop();
+	await running;
 	const after = f.store.task(id)!;
 	expect(after.phase).toBe(before.phase);
 	expect(after.held).toBe(true);
@@ -299,7 +315,11 @@ test("a queued task no node can admit is deferred without any node call, with bo
 	let sampled = 0;
 	const eventsBefore = f.store.events(q.id).length;
 	const d = daemon(f.fleet, { queueMaxBackoffMs: 100, sample: async () => { sampled++; return { ok: false, at: Date.now(), error: "unreachable" }; } });
-	await runFor(d, 600);
+	const running = d.run();
+	cleanups.push(async () => { d.stop(); await running.catch(() => {}); });
+	await until(() => sampled >= 2, 5_000);
+	d.stop();
+	await running;
 	expect(f.store.task(q.id)!.phase).toBe("queued");
 	expect(f.store.task(q.id)!.attemptId).toBeUndefined();
 	// cycle 20 ms over 600 ms would be ~30 passes without the deferral; backoff 20,40,80,100,100,...
@@ -945,7 +965,11 @@ for (const scenario of ["slow probe", "unmeasurable"] as const) test(`R1 (${scen
 	const startedAt = Date.now();
 	const running = d.run();
 	cleanups.push(async () => { d.stop(); await running.catch(() => {}); });
-	await Bun.sleep(4_000);
+	await until(() => {
+		const calls = stats.nodeCalls.get("fast") ?? [];
+		const slowOk = scenario !== "slow probe" || f.probes("slow") >= 1;
+		return calls.length >= 10 && f.probes("fast") >= 1 && slowOk;
+	}, 20_000);
 	const stoppedAt = Date.now();
 	d.stop();
 	await running;
