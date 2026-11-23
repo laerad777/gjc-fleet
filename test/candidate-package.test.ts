@@ -1429,6 +1429,11 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 		},
 		/** Removes every mount point first: a recursive delete of the fixture must never reach the volume's files. */
 		done() {
+			// Keep going through unmount → detach → vhdx rm even when one step fails; surface every error.
+			const errors: Error[] = [];
+			const push = (error: unknown) => {
+				errors.push(error instanceof Error ? error : new Error(String(error)));
+			};
 			// Volume{...} on /L means still mounted. Clear tracking only for a confirmed unmount:
 			// /D exit 0 with no volume id, or an explicit mountvol "not mounted" status (not generic path errors).
 			const explicitNotMounted = (text: string) => /not currently mounted|is not a mounted volume/i.test(text);
@@ -1437,6 +1442,7 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 				const removal = points.size === 1 ? "/P" : "/D";
 				let lastDel = "";
 				let lastList = "";
+				let cleared = false;
 				for (let attempt = 0; attempt < 50; attempt++) {
 					const del = Bun.spawnSync(["mountvol", mount + "\\", removal]);
 					lastDel = `${del.stdout}${del.stderr}`;
@@ -1449,41 +1455,57 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 					}
 					if (del.exitCode === 0 || explicitNotMounted(lastDel) || explicitNotMounted(lastList)) {
 						points.delete(mount);
+						cleared = true;
 						break;
 					}
-					if (attempt === 49) {
-						throw Error(
-							`mountvol did not confirm unmount for ${mount}: /D exit ${del.exitCode}: ${lastDel}; /L exit ${listed.exitCode}: ${lastList}`,
-						);
-					}
+					if (attempt === 49) break;
 					Bun.sleepSync(100);
 				}
-			}
-			if (points.size) throw Error(`mount points still tracked after teardown: ${[...points].join(", ")}`);
-			points.clear();
-			// Detach is best-effort: a prior cleanup or failed attach can leave the VHD already detached (exit 87).
-			writeFileSync(join(dir, "dp.txt"), [`select vdisk file="${vhdx}"`, "detach vdisk"].join("\r\n") + "\r\n");
-			const detach = Bun.spawnSync(["diskpart", "/s", join(dir, "dp.txt")]);
-			if (detach.exitCode !== 0) {
-				const text = `${detach.stdout}${detach.stderr}`;
-				if (!/already detached/i.test(text)) {
-					throw Error(`diskpart detach exited ${detach.exitCode}: ${text}`);
+				if (!cleared) {
+					push(
+						Error(
+							`mountvol did not confirm unmount for ${mount}: ${removal} lastDel=${lastDel}; /L lastList=${lastList}`,
+						),
+					);
 				}
+			}
+			if (points.size) {
+				push(Error(`mount points still tracked after teardown: ${[...points].join(", ")}`));
+				points.clear();
+			}
+			// Detach is best-effort: a prior cleanup or failed attach can leave the VHD already detached (exit 87).
+			try {
+				writeFileSync(join(dir, "dp.txt"), [`select vdisk file="${vhdx}"`, "detach vdisk"].join("\r\n") + "\r\n");
+				const detach = Bun.spawnSync(["diskpart", "/s", join(dir, "dp.txt")]);
+				if (detach.exitCode !== 0) {
+					const text = `${detach.stdout}${detach.stderr}`;
+					if (!/already detached/i.test(text)) {
+						push(Error(`diskpart detach exited ${detach.exitCode}: ${text}`));
+					}
+				}
+			} catch (error) {
+				push(error);
 			}
 			// After mounts are cleared and detach succeeds, the VDS/AV lock release is retried for a minute;
 			// hosted runners have held it longer than the old 12 s bound. A still-locked file after that is a cleanup failure.
-			for (let attempt = 0; ; attempt++) {
-				try {
-					rmSync(vhdx, { force: true });
-					return;
-				} catch (error: any) {
-					if (error?.code !== "EBUSY") throw error;
-					if (attempt >= 600) {
-						throw Error(`vhdx still EBUSY after mountvol clear + detach (${vhdx})`);
+			try {
+				for (let attempt = 0; ; attempt++) {
+					try {
+						rmSync(vhdx, { force: true });
+						break;
+					} catch (error: any) {
+						if (error?.code !== "EBUSY") throw error;
+						if (attempt >= 600) {
+							throw Error(`vhdx still EBUSY after mountvol clear + detach (${vhdx})`);
+						}
+						Bun.sleepSync(100);
 					}
-					Bun.sleepSync(100);
 				}
+			} catch (error) {
+				push(error);
 			}
+			if (errors.length === 1) throw errors[0]!;
+			if (errors.length > 1) throw new AggregateError(errors, `folderMountedVolume cleanup failed (${errors.length})`);
 		},
 	};
 }
@@ -1569,8 +1591,22 @@ test.skipIf(!elevated)("S1: a volume mounted in a folder (no drive letter): git'
 	} finally {
 		process.env.PATH = saved;
 		clearMark();
-		for (const x of volumes.reverse()) x.done();
-		f.done();
+		// One volume's cleanup failure must not skip the rest (or the fixture temp tree).
+		const cleanupErrors: Error[] = [];
+		for (const x of [...volumes].reverse()) {
+			try {
+				x.done();
+			} catch (error) {
+				cleanupErrors.push(error instanceof Error ? error : new Error(String(error)));
+			}
+		}
+		try {
+			f.done();
+		} catch (error) {
+			cleanupErrors.push(error instanceof Error ? error : new Error(String(error)));
+		}
+		if (cleanupErrors.length === 1) throw cleanupErrors[0]!;
+		if (cleanupErrors.length > 1) throw new AggregateError(cleanupErrors, `S1 cleanup failed (${cleanupErrors.length})`);
 	}
 }, 180_000);
 
