@@ -654,3 +654,5 @@ health, otherwise the switch silently comes back on when this code is deployed a
 
 Not exercised: real `performance.now()` behaviour across a host suspend or VM pause, real
 cross-host SQLite sharing, and the producer's probes against real hosts.
+
+<!-- docs-only CI path check -->
