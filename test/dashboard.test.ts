@@ -546,8 +546,7 @@ test("balloon-reclaimed Linux memory is reported apart from real use and half-tr
 	expect(resourceReasons("/home/user/w", { ...base, memTotal: ballooned.memTotal, memUsed: ballooned.memTotal - 318_276 * 1024 }, 0, now)).toContain("memory_low");
 });
 
-// Windows: Bun.spawn kill of `sh -c … sleep` often leaves the tree alive, so reconnect never launches.
-test.skipIf(process.platform === "win32")(
+test(
 	"a resource stream that goes silent is killed and reconnected",
 	async () => {
 		const { startResourceStreams } = await import("../src/dashboard");
@@ -559,12 +558,15 @@ test.skipIf(process.platform === "win32")(
 			(_id, resources) => samples.push(resources.ok),
 			{
 				stallMs: 400,
-				// One valid sample, then the remote freezes without closing the session.
+				// One Bun child prints a sample then freezes (no shell tree) so kill reconnects on Windows too.
 				command: () => {
 					launches += 1;
 					return {
-						argv: ["sh", "-c", "echo 'L 4 0.50 900 1000 8000000 6000000|100000 60000 /'; exec sleep 600"],
-						script: "\n",
+						argv: [
+							process.execPath,
+							"--eval",
+							"process.stdout.write('L 4 0.50 900 1000 8000000 6000000|100000 60000 /\\n'); await Bun.sleep(600_000);",
+						],
 					};
 				},
 			},

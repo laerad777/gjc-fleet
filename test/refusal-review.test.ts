@@ -151,13 +151,17 @@ test("R1: executed collection whose reply cannot be encoded is executed_reply_fa
 		certainty: "unknown",
 		correlationId: expect.stringMatching(/^[a-f0-9-]{36}$/),
 	});
-	// Without O_NOFOLLOW (Windows), file logging is fail-closed and falls back to stderr.
+	// Without O_NOFOLLOW (Windows), file logging is fail-closed; assert stderr fallback instead.
 	if (nodeErrorLogSupportsNoFollow) {
 		const log = await readFile(resolve(import.meta.dir, "../src/.node-errors.log"), "utf8");
 		expect(log).toContain(
 			JSON.stringify({ correlationId: r.reply.correlationId, error: "executed_reply_failed" }),
 		);
 		clean(log);
+	} else {
+		expect(r.stderr).toContain(r.reply.correlationId);
+		expect(r.stderr).not.toContain(f.dir);
+		clean(r.stderr);
 	}
 	// The same answer through the caller is an unknown outcome, not a refusal.
 	const helper = join(f.dir, "replay.ts");

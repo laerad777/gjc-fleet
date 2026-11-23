@@ -195,15 +195,36 @@ test("actual helper: git failure before any effect is a proven refusal; after pr
 });
 test("actual helper: unknown exception has bounded correlation and local log", async () => {
 	const f = await fixture();
-	const reply = await refusal(
-		f.call({ action: "test", identity: f.identity, argv: [f.dir] }),
-		"internal",
-		"unknown",
-	);
+	const request = { action: "test", identity: f.identity, argv: [f.dir] };
+	// Without O_NOFOLLOW (Windows), file logging is fail-closed; assert stderr fallback instead.
+	if (!nodeErrorLogSupportsNoFollow) {
+		const child = Bun.spawn([process.execPath, ...f.args], {
+			stdin: "pipe",
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		child.stdin.write(JSON.stringify(request));
+		child.stdin.end();
+		const [stdout, stderr, exit] = await Promise.all([
+			new Response(child.stdout).text(),
+			new Response(child.stderr).text(),
+			child.exited,
+		]);
+		expect(exit).toBe(1);
+		const reply = JSON.parse(stdout.trim());
+		expect(reply).toMatchObject({
+			ok: false,
+			error: "internal",
+			certainty: "unknown",
+		});
+		expect(reply.correlationId).toMatch(/^[a-f0-9-]{36}$/);
+		expect(stderr).toContain(reply.correlationId);
+		expect(stderr).not.toContain(f.dir);
+		return;
+	}
+	const reply = await refusal(f.call(request), "internal", "unknown");
 	const correlationId = "correlationId" in reply ? reply.correlationId : undefined;
 	expect(correlationId).toMatch(/^[a-f0-9-]{36}$/);
-	// Without O_NOFOLLOW (Windows), file logging is fail-closed and falls back to stderr.
-	if (!nodeErrorLogSupportsNoFollow) return;
 	const log = await readFile(resolve(import.meta.dir, "../src/.node-errors.log"), "utf8");
 	expect(log).toContain(correlationId!);
 	expect(log).not.toContain(f.dir);
