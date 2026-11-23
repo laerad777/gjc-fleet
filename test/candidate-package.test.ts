@@ -1441,35 +1441,39 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 			// /D exit 0 with no volume id, or an explicit mountvol "not mounted" status (not generic path errors).
 			const explicitNotMounted = (text: string) => /not currently mounted|is not a mounted volume/i.test(text);
 			for (const mount of [...points]) {
-				// Removing a name does not dismount the volume. Offline it at the final mount.
-				const removal = points.size === 1 ? "/P" : "/D";
-				let lastDel = "";
-				let lastList = "";
-				let cleared = false;
-				for (let attempt = 0; attempt < 50; attempt++) {
-					const del = Bun.spawnSync(["mountvol", mount + "\\", removal]);
-					lastDel = `${del.stdout}${del.stderr}`;
-					const listed = Bun.spawnSync(["mountvol", mount + "\\", "/L"]);
-					lastList = `${listed.stdout}${listed.stderr}`;
-					const hasVolume = /Volume\{[0-9a-f-]+\}/i.test(lastList);
-					if (hasVolume) {
+				try {
+					// Removing a name does not dismount the volume. Offline it at the final mount.
+					const removal = points.size === 1 ? "/P" : "/D";
+					let lastDel = "";
+					let lastList = "";
+					let cleared = false;
+					for (let attempt = 0; attempt < 50; attempt++) {
+						const del = Bun.spawnSync(["mountvol", mount + "\\", removal]);
+						lastDel = `${del.stdout}${del.stderr}`;
+						const listed = Bun.spawnSync(["mountvol", mount + "\\", "/L"]);
+						lastList = `${listed.stdout}${listed.stderr}`;
+						const hasVolume = /Volume\{[0-9a-f-]+\}/i.test(lastList);
+						if (hasVolume) {
+							Bun.sleepSync(100);
+							continue;
+						}
+						if (del.exitCode === 0 || explicitNotMounted(lastDel) || explicitNotMounted(lastList)) {
+							points.delete(mount);
+							cleared = true;
+							break;
+						}
+						if (attempt === 49) break;
 						Bun.sleepSync(100);
-						continue;
 					}
-					if (del.exitCode === 0 || explicitNotMounted(lastDel) || explicitNotMounted(lastList)) {
-						points.delete(mount);
-						cleared = true;
-						break;
+					if (!cleared) {
+						push(
+							Error(
+								`mountvol did not confirm unmount for ${mount}: ${removal} lastDel=${lastDel}; /L lastList=${lastList}`,
+							),
+						);
 					}
-					if (attempt === 49) break;
-					Bun.sleepSync(100);
-				}
-				if (!cleared) {
-					push(
-						Error(
-							`mountvol did not confirm unmount for ${mount}: ${removal} lastDel=${lastDel}; /L lastList=${lastList}`,
-						),
-					);
+				} catch (error) {
+					push(error);
 				}
 			}
 			const mountsCleared = points.size === 0;
@@ -1477,6 +1481,26 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 				// Leave points intact so the remaining mounts and paths stay distinguishable.
 				push(Error(`mount points still tracked after teardown: ${[...points].join(", ")}`));
 				return { mountsCleared, errors };
+			}
+			// Mid-test unmount() uses /D even on the last mount (needed so a raw Volume{GUID} junction can still
+			// resolve). That leaves the volume online with no tracked mount, so offline it by GUID before detach.
+			try {
+				let lastDel = "";
+				let offlined = false;
+				for (let attempt = 0; attempt < 50; attempt++) {
+					const del = Bun.spawnSync(["mountvol", volume, "/P"]);
+					lastDel = `${del.stdout}${del.stderr}`;
+					if (del.exitCode === 0 || explicitNotMounted(lastDel) || /already.*offline|not.*mounted/i.test(lastDel)) {
+						offlined = true;
+						break;
+					}
+					Bun.sleepSync(100);
+				}
+				if (!offlined) {
+					push(Error(`mountvol /P on volume GUID did not confirm offline for ${volume}: ${lastDel}`));
+				}
+			} catch (error) {
+				push(error);
 			}
 			// Detach is best-effort: a prior cleanup or failed attach can leave the VHD already detached (exit 87).
 			try {
@@ -1599,9 +1623,14 @@ test.skipIf(!elevated)("S1: a volume mounted in a folder (no drive letter): git'
 		const cleanupErrors: Error[] = [];
 		let mountsSafe = true;
 		for (const x of [...volumes].reverse()) {
-			const result = x.done();
-			cleanupErrors.push(...result.errors);
-			if (!result.mountsCleared) mountsSafe = false;
+			try {
+				const result = x.done();
+				cleanupErrors.push(...result.errors);
+				if (!result.mountsCleared) mountsSafe = false;
+			} catch (error) {
+				mountsSafe = false;
+				cleanupErrors.push(error instanceof Error ? error : new Error(String(error)));
+			}
 		}
 		if (mountsSafe) {
 			try {
