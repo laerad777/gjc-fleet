@@ -1429,30 +1429,29 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 		},
 		/** Removes every mount point first: a recursive delete of the fixture must never reach the volume's files. */
 		done() {
-			// Only a confirmed unmount counts: /L showing no Volume id with a known "not mounted" status.
-			// Other /L failures (access denied, etc.) must not clear tracking or proceed to detach.
-			const notMounted = (text: string) =>
-				/not currently mounted|is not a mounted volume|The system cannot find the file specified|The directory is not a subdirectory of the root directory/i.test(
-					text,
-				);
+			// Volume{...} on /L means still mounted. Clear tracking only for a confirmed unmount:
+			// /D exit 0 with no volume id, or an explicit mountvol "not mounted" status (not generic path errors).
+			const explicitNotMounted = (text: string) => /not currently mounted|is not a mounted volume/i.test(text);
 			for (const mount of [...points]) {
 				let lastDel = "";
+				let lastList = "";
 				for (let attempt = 0; attempt < 50; attempt++) {
 					const del = Bun.spawnSync(["mountvol", mount + "\\", "/D"]);
 					lastDel = `${del.stdout}${del.stderr}`;
 					const listed = Bun.spawnSync(["mountvol", mount + "\\", "/L"]);
-					const listText = `${listed.stdout}${listed.stderr}`;
-					if (listed.exitCode === 0 && /Volume\{/i.test(listText)) {
+					lastList = `${listed.stdout}${listed.stderr}`;
+					const hasVolume = /Volume\{[0-9a-f-]+\}/i.test(lastList);
+					if (hasVolume) {
 						Bun.sleepSync(100);
 						continue;
 					}
-					if (listed.exitCode !== 0 && notMounted(listText)) {
+					if (del.exitCode === 0 || explicitNotMounted(lastDel) || explicitNotMounted(lastList)) {
 						points.delete(mount);
 						break;
 					}
 					if (attempt === 49) {
 						throw Error(
-							`mountvol did not confirm unmount for ${mount}: /D exit ${del.exitCode}: ${lastDel}; /L exit ${listed.exitCode}: ${listText}`,
+							`mountvol did not confirm unmount for ${mount}: /D exit ${del.exitCode}: ${lastDel}; /L exit ${listed.exitCode}: ${lastList}`,
 						);
 					}
 					Bun.sleepSync(100);
