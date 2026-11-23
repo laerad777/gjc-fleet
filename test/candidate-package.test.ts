@@ -1429,22 +1429,36 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 		},
 		/** Removes every mount point first: a recursive delete of the fixture must never reach the volume's files. */
 		done() {
-			// Do not ignore mountvol /D: a still-mounted folder keeps the VHDX locked (EBUSY on rm).
+			// Only a confirmed unmount counts: /L showing no Volume id with a known "not mounted" status.
+			// Other /L failures (access denied, etc.) must not clear tracking or proceed to detach.
+			const notMounted = (text: string) =>
+				/not currently mounted|is not a mounted volume|The system cannot find the file specified|The directory is not a subdirectory of the root directory/i.test(
+					text,
+				);
 			for (const mount of [...points]) {
-				let last = "";
+				let lastDel = "";
 				for (let attempt = 0; attempt < 50; attempt++) {
 					const del = Bun.spawnSync(["mountvol", mount + "\\", "/D"]);
-					last = `${del.stdout}${del.stderr}`;
+					lastDel = `${del.stdout}${del.stderr}`;
 					const listed = Bun.spawnSync(["mountvol", mount + "\\", "/L"]);
 					const listText = `${listed.stdout}${listed.stderr}`;
-					if (listed.exitCode !== 0 || !/Volume\{/i.test(listText)) {
+					if (listed.exitCode === 0 && /Volume\{/i.test(listText)) {
+						Bun.sleepSync(100);
+						continue;
+					}
+					if (listed.exitCode !== 0 && notMounted(listText)) {
 						points.delete(mount);
 						break;
 					}
-					if (attempt === 49) throw Error(`mountvol /D did not clear ${mount}: exit ${del.exitCode}: ${last}`);
+					if (attempt === 49) {
+						throw Error(
+							`mountvol did not confirm unmount for ${mount}: /D exit ${del.exitCode}: ${lastDel}; /L exit ${listed.exitCode}: ${listText}`,
+						);
+					}
 					Bun.sleepSync(100);
 				}
 			}
+			if (points.size) throw Error(`mount points still tracked after teardown: ${[...points].join(", ")}`);
 			points.clear();
 			// Detach is best-effort: a prior cleanup or failed attach can leave the VHD already detached (exit 87).
 			writeFileSync(join(dir, "dp.txt"), [`select vdisk file="${vhdx}"`, "detach vdisk"].join("\r\n") + "\r\n");
