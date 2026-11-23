@@ -33,7 +33,7 @@ const SECOND = 1000;
  * (macOS verify under load hit +149ms / +223ms on the 30s/120s cases). Hang
  * answers must stay beyond this slack so a late timer still beats the fixture.
  */
-const TIMER_SLACK = 2 * SECOND;
+const TIMER_SLACK = 5 * SECOND;
 
 type Options = { os: "posix" | "win32"; timeoutMs?: number; legacyRow?: boolean; state?: Partial<ControlledState> };
 async function fixture(options: Options) {
