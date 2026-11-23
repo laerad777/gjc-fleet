@@ -1574,8 +1574,10 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 								stderr: "ignore",
 								timeout: 5_000,
 							});
-							const allow =
-								/^(Attached=(?:true|false|unknown)|Defender(?: id=\d+ t=\S+|none)|VDS(?: id=\d+ t=\S+|none))$/;
+							const isoUtc = String.raw`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z`;
+							const allow = new RegExp(
+								`^(Attached=(?:true|false|unknown)|Defender(?: id=\\d+ t=${isoUtc}|none)|VDS(?: id=\\d+ t=${isoUtc}|none))$`,
+							);
 							const lines = `${probe.stdout}`
 								.toString()
 								.split(/\r?\n/)
