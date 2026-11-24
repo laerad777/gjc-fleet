@@ -1431,12 +1431,37 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 		done() {
 			for (const at of points) Bun.spawnSync(["mountvol", at + "\\", "/D"]);
 			points.clear();
-			// Detach can race with VDS already releasing the image; exit 87 "already detached" is success.
+			const fixtureVhdx = `${basename(dir)}/${basename(vhdx)}`;
+			// Detach can race with VDS already releasing the image. Accept only exit 0 with a
+			// successful detach, or exit 87 with "already detached" — never a bare text match.
 			writeFileSync(join(dir, "dp.txt"), [`select vdisk file="${vhdx}"`, "detach vdisk"].join("\r\n") + "\r\n");
 			const detach = Bun.spawnSync(["diskpart", "/s", join(dir, "dp.txt")]);
 			const detachText = `${detach.stdout}${detach.stderr}`;
-			if (detach.exitCode !== 0 && !/already detached/i.test(detachText)) {
-				throw Error(`diskpart detach exited ${detach.exitCode}: ${detachText}`);
+			const already = /already detached/i.test(detachText);
+			const detachedOk = detach.exitCode === 0 && /successfully detached/i.test(detachText);
+			const alreadyOk = detach.exitCode === 87 && already;
+			if (!detachedOk && !alreadyOk) {
+				throw Error(`diskpart detach not accepted for ${fixtureVhdx} (exit=${detach.exitCode}; already=${already})`);
+			}
+			// Do not delete while Get-DiskImage still reports Attached=true|unknown.
+			const ps = [
+				`$p = ${JSON.stringify(vhdx)}`,
+				`try { $i = Get-DiskImage -ImagePath $p -ErrorAction Stop; if ($i.Attached -eq $true) { 'Attached=true' } elseif ($i.Attached -eq $false) { 'Attached=false' } else { 'Attached=unknown' } } catch { 'Attached=unknown' }`,
+			].join("; ");
+			const probe = Bun.spawnSync(["powershell", "-NoProfile", "-Command", ps], {
+				stdout: "pipe",
+				stderr: "ignore",
+				timeout: 5_000,
+			});
+			const attached =
+				`${probe.stdout}`
+					.toString()
+					.split(/\r?\n/)
+					.map((l) => l.trim())
+					.find((l) => /^Attached=(?:true|false|unknown)$/.test(l))
+					?.slice("Attached=".length) ?? "unknown";
+			if (attached !== "false") {
+				throw Error(`vhdx still Attached=${attached} after detach (${fixtureVhdx}); skipped delete`);
 			}
 			rmSync(vhdx, { force: true });
 		},
