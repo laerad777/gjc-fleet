@@ -1407,65 +1407,91 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 	mkdirSync(dir, { recursive: true });
 	mkdirSync(at, { recursive: true });
 	const vhdx = join(dir, "v.vhdx");
+	const fixtureVhdx = `${basename(dir)}/${basename(vhdx)}`;
 	const diskpart = (...lines: string[]) => {
 		writeFileSync(join(dir, "dp.txt"), lines.join("\r\n") + "\r\n");
 		return run(["diskpart", "/s", join(dir, "dp.txt")]);
 	};
-	diskpart(`create vdisk file="${vhdx}" maximum=512 type=expandable`, `select vdisk file="${vhdx}"`, "attach vdisk", "create partition primary", `format fs=${fs} quick label=CANDS1`, `assign mount="${at}"`);
-	const volume = run(["mountvol", at + "\\", "/L"]).trim();
-	expect(volume).toMatch(/^\\\\\?\\Volume\{[0-9a-f-]+\}\\$/i);
-	const points = new Set([at]);
-	return {
-		mnt: at,
-		volume,
-		mount(at: string) {
-			mkdirSync(at, { recursive: true });
-			run(["mountvol", at + "\\", volume]);
-			points.add(at);
-		},
-		unmount(at: string) {
-			run(["mountvol", at + "\\", "/D"]);
-			points.delete(at);
-		},
-		/** Removes every mount point first: a recursive delete of the fixture must never reach the volume's files. */
-		done() {
-			for (const at of points) Bun.spawnSync(["mountvol", at + "\\", "/D"]);
-			points.clear();
-			const fixtureVhdx = `${basename(dir)}/${basename(vhdx)}`;
-			// Detach can race with VDS already releasing the image. Accept only exit 0 with a
-			// successful detach, or exit 87 with "already detached" — never a bare text match.
-			writeFileSync(join(dir, "dp.txt"), [`select vdisk file="${vhdx}"`, "detach vdisk"].join("\r\n") + "\r\n");
-			const detach = Bun.spawnSync(["diskpart", "/s", join(dir, "dp.txt")]);
-			const detachText = `${detach.stdout}${detach.stderr}`;
-			const already = /already detached/i.test(detachText);
-			const detachedOk = detach.exitCode === 0 && /successfully detached/i.test(detachText);
-			const alreadyOk = detach.exitCode === 87 && already;
-			if (!detachedOk && !alreadyOk) {
-				throw Error(`diskpart detach not accepted for ${fixtureVhdx} (exit=${detach.exitCode}; already=${already})`);
-			}
-			// Do not delete while Get-DiskImage still reports Attached=true|unknown.
-			const ps = [
-				`$p = ${JSON.stringify(vhdx)}`,
-				`try { $i = Get-DiskImage -ImagePath $p -ErrorAction Stop; if ($i.Attached -eq $true) { 'Attached=true' } elseif ($i.Attached -eq $false) { 'Attached=false' } else { 'Attached=unknown' } } catch { 'Attached=unknown' }`,
-			].join("; ");
-			const probe = Bun.spawnSync(["powershell", "-NoProfile", "-Command", ps], {
-				stdout: "pipe",
-				stderr: "ignore",
-				timeout: 5_000,
-			});
-			const attached =
-				`${probe.stdout}`
-					.toString()
-					.split(/\r?\n/)
-					.map((l) => l.trim())
-					.find((l) => /^Attached=(?:true|false|unknown)$/.test(l))
-					?.slice("Attached=".length) ?? "unknown";
-			if (attached !== "false") {
-				throw Error(`vhdx still Attached=${attached} after detach (${fixtureVhdx}); skipped delete`);
-			}
-			rmSync(vhdx, { force: true });
-		},
+	/** DiskPart detach + Get-DiskImage probe; deletes only when exit 0 and exactly one Attached=false. */
+	const detachConfirmedThenDelete = () => {
+		if (!existsSync(vhdx)) return;
+		// Detach can race with VDS already releasing the image. Accept only exit 0 with a
+		// successful detach, or exit 87 with "already detached" — never a bare text match.
+		writeFileSync(join(dir, "dp.txt"), [`select vdisk file="${vhdx}"`, "detach vdisk"].join("\r\n") + "\r\n");
+		const detach = Bun.spawnSync(["diskpart", "/s", join(dir, "dp.txt")]);
+		const detachText = `${detach.stdout}${detach.stderr}`;
+		const already = /already detached/i.test(detachText);
+		const detachedOk = detach.exitCode === 0 && /successfully detached/i.test(detachText);
+		const alreadyOk = detach.exitCode === 87 && already;
+		if (!detachedOk && !alreadyOk) {
+			throw Error(`diskpart detach not accepted for ${fixtureVhdx} (exit=${detach.exitCode}; already=${already})`);
+		}
+		// Path is an argv value (-ImagePath), never interpolated into PowerShell source.
+		writeFileSync(
+			join(dir, "probe-attached.ps1"),
+			[
+				"param([Parameter(Mandatory)][string]$ImagePath)",
+				"try {",
+				"  $i = Get-DiskImage -ImagePath $ImagePath -ErrorAction Stop",
+				"  if ($i.Attached -eq $true) { Write-Output 'Attached=true'; exit 0 }",
+				"  elseif ($i.Attached -eq $false) { Write-Output 'Attached=false'; exit 0 }",
+				"  else { Write-Output 'Attached=unknown'; exit 1 }",
+				"} catch {",
+				"  Write-Output 'Attached=unknown'",
+				"  exit 1",
+				"}",
+			].join("\r\n") + "\r\n",
+		);
+		const probe = Bun.spawnSync(
+			["powershell", "-NoProfile", "-File", join(dir, "probe-attached.ps1"), "-ImagePath", vhdx],
+			{ stdout: "pipe", stderr: "pipe", timeout: 30_000 },
+		);
+		const attachedLines = `${probe.stdout}`
+			.toString()
+			.split(/\r?\n/)
+			.map((l) => l.trim())
+			.filter((l) => /^Attached=(?:true|false|unknown)$/.test(l));
+		if (probe.exitCode !== 0 || attachedLines.length !== 1 || attachedLines[0] !== "Attached=false") {
+			const attached = attachedLines.length === 1 ? attachedLines[0].slice("Attached=".length) : `count=${attachedLines.length}`;
+			throw Error(
+				`vhdx not confirmed detached for ${fixtureVhdx} (probeExit=${probe.exitCode}; Attached=${attached}); skipped delete`,
+			);
+		}
+		rmSync(vhdx, { force: true });
 	};
+	const points = new Set<string>();
+	try {
+		diskpart(`create vdisk file="${vhdx}" maximum=512 type=expandable`, `select vdisk file="${vhdx}"`, "attach vdisk", "create partition primary", `format fs=${fs} quick label=CANDS1`, `assign mount="${at}"`);
+		points.add(at);
+		const volume = run(["mountvol", at + "\\", "/L"]).trim();
+		expect(volume).toMatch(/^\\\\\?\\Volume\{[0-9a-f-]+\}\\$/i);
+		return {
+			mnt: at,
+			volume,
+			mount(at: string) {
+				mkdirSync(at, { recursive: true });
+				run(["mountvol", at + "\\", volume]);
+				points.add(at);
+			},
+			unmount(at: string) {
+				run(["mountvol", at + "\\", "/D"]);
+				points.delete(at);
+			},
+			/** Removes every mount point first: a recursive delete of the fixture must never reach the volume's files. */
+			done() {
+				for (const at of points) Bun.spawnSync(["mountvol", at + "\\", "/D"]);
+				points.clear();
+				detachConfirmedThenDelete();
+			},
+		};
+	} catch (e) {
+		// Attach may have succeeded before format/mount registration failed: never leave an
+		// attached nested volume for the outer fixture recursive delete to erase unchecked.
+		for (const p of points) Bun.spawnSync(["mountvol", p + "\\", "/D"]);
+		points.clear();
+		detachConfirmedThenDelete();
+		throw e;
+	}
 }
 
 test.skipIf(!elevated)("S1: a volume mounted in a folder (no drive letter): git's chain is walked on its own volume and across every mount point; a git.exe on or under the workspace never runs, a legitimate one is accepted", async () => {
