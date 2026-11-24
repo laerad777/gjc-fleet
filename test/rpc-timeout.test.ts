@@ -29,11 +29,13 @@ afterAll(async () => {
 const SECOND = 1000;
 /**
  * Upper bound slack for "timed out at the configured limit" wall-clock checks.
- * A loaded host can delay setTimeout past the nominal limit by a few hundred ms
- * (macOS verify under load hit +149ms / +223ms on the 30s/120s cases). Hang
- * answers must stay beyond this slack so a late timer still beats the fixture.
+ * The measured span covers the whole Fleet call, not just the timer: starting the node helper and
+ * the controlled Coordinator, and the store, while the long cases run concurrently. On the hosted
+ * Windows runner the 30 s case took 32.56 s and the 120 s case 123.11 s, over the former 2 s slack
+ * (earlier macOS verify runs saw +149 ms / +223 ms). Hang answers stay beyond this slack
+ * (limit + slack + 1 s), so a late timer still beats the fixture.
  */
-const TIMER_SLACK = 2 * SECOND;
+const TIMER_SLACK = 5 * SECOND;
 
 type Options = { os: "posix" | "win32"; timeoutMs?: number; legacyRow?: boolean; state?: Partial<ControlledState> };
 async function fixture(options: Options) {
