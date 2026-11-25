@@ -78,6 +78,7 @@ function warmUp(p: string, real: { t: number }) {
 	return a;
 }
 
+// Windows hosted runners need more than the default 5 s for three SQLite copy/warm loops.
 test("M1: a DB copied to a host whose clock is behind by the transfer time is never ahead of the honest copy; admission needs the decision's own probe", () => {
 	for (const gap of [10 * M, H, 24 * H]) {
 		const run = (anomalous: boolean) => {
@@ -95,7 +96,7 @@ test("M1: a DB copied to a host whose clock is behind by the transfer time is ne
 		};
 		neverAhead(run(true), run(false));
 	}
-});
+}, 30_000);
 
 test("M1: a new process after an unobserved hour and a backward wall step is never ahead of the honest run", () => {
 	const run = (anomalous: boolean) => {
