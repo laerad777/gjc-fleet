@@ -161,10 +161,8 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.docs_only == 'false' }}
     runs-on: windows-latest
-    # Informational only (continue-on-error). Hosted Windows needs ~60–75m of suite time;
-    # 45m cancelled mid-run after operator-exit-codes and hid later failures.
+    # Hosted Windows can exceed the standard test job budget.
     timeout-minutes: 90
-    continue-on-error: true
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -179,7 +177,7 @@ jobs:
   gate:
     name: PR gate
     if: ${{ always() }}
-    needs: [changes, static, security, docs, test]
+    needs: [changes, static, security, docs, test, windows]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
@@ -191,10 +189,11 @@ jobs:
           SECURITY: ${{ needs.security.result }}
           DOCS: ${{ needs.docs.result }}
           TEST: ${{ needs.test.result }}
+          WINDOWS: ${{ needs.windows.result }}
         run: |
           test "$CHANGES" = success && test "$STATIC" = success && test "$SECURITY" = success || exit 1
           case "$DOCS_ONLY" in
-            true) test "$DOCS" = success && test "$TEST" = skipped ;;
-            false) test "$DOCS" = skipped && test "$TEST" = success ;;
+            true) test "$DOCS" = success && test "$TEST" = skipped && test "$WINDOWS" = skipped ;;
+            false) test "$DOCS" = skipped && test "$TEST" = success && test "$WINDOWS" = success ;;
             *) exit 1 ;;
           esac

@@ -1402,8 +1402,52 @@ const run = (cmd: string[]) => {
 	if (r.exitCode !== 0) throw Error(`${cmd.join(" ")} exited ${r.exitCode}: ${r.stdout}${r.stderr}`);
 	return r.stdout.toString();
 };
-/** A 512 MB expandable VHDX under `dir` (NTFS unless `fs`), attached and mounted at `dir\mnt` only (no drive letter). */
-function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
+type FolderVolume = {
+	mnt: string;
+	volume: string;
+	mount(at: string): void;
+	unmount(at: string): void;
+	/** Unmounts, detaches (confirmed) and deletes the VHDX. Throws if any step is not confirmed; never deletes an attached image. */
+	done(): void;
+};
+/** One error as is, several as an AggregateError whose message names every one (so a test runner prints them all). */
+function combineErrors(errors: unknown[], what: string): unknown {
+	if (errors.length === 1) return errors[0];
+	const text = errors.map((e, i) => `[${i + 1}] ${e instanceof Error ? e.message : String(e)}`).join("; ");
+	return new AggregateError(errors, `${what}: ${text}`);
+}
+/**
+ * Tears down every registered volume (latest first), continuing after a failure, then removes the outer fixture
+ * only when every volume was confirmed detached: a recursive delete must never reach a still-attached volume.
+ * A failure of the test body is never masked: it is rethrown together with every teardown error.
+ */
+function teardownVolumes(volumes: FolderVolume[], removeOuter: () => void, body: { failed: boolean; error?: unknown }) {
+	const errors: unknown[] = [];
+	for (const x of [...volumes].reverse()) {
+		try {
+			x.done();
+		} catch (e) {
+			errors.push(e);
+		}
+	}
+	if (errors.length === 0) {
+		try {
+			removeOuter();
+		} catch (e) {
+			errors.push(e);
+		}
+	} else {
+		errors.push(Error("outer fixture recursive delete skipped: a volume was not confirmed detached"));
+	}
+	if (body.failed) throw errors.length ? combineErrors([body.error, ...errors], "test failed and teardown also failed") : body.error;
+	if (errors.length) throw combineErrors(errors, "teardown failed");
+}
+/**
+ * A 512 MB expandable VHDX under `dir` (NTFS unless `fs`), attached and mounted at `dir\mnt` only (no drive letter).
+ * The volume is pushed onto `volumes` BEFORE the first diskpart create/attach, so a creation that fails halfway
+ * (attached but not formatted or mounted) is still detached by the caller's teardown.
+ */
+function folderMountedVolume(dir: string, volumes: FolderVolume[], fs = "ntfs", at = join(dir, "mnt")): FolderVolume {
 	mkdirSync(dir, { recursive: true });
 	mkdirSync(at, { recursive: true });
 	const vhdx = join(dir, "v.vhdx");
@@ -1414,7 +1458,12 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 	};
 	/** DiskPart detach + Get-DiskImage probe; deletes only when exit 0 and exactly one Attached=false. */
 	const detachConfirmedThenDelete = () => {
-		if (!existsSync(vhdx)) return;
+		// A vhdx that is no longer visible is NOT a confirmed detach. Only the DiskPart result
+		// (exit 0 + successful detach text, or exit 87 + already detached) plus the Attached=false
+		// probe below confirms a detach; a missing file leaves the delete blocked.
+		if (!existsSync(vhdx)) {
+			throw Error(`vhdx not visible before detach for ${fixtureVhdx}; detach unconfirmed, skipped delete`);
+		}
 		// Detach can race with VDS already releasing the image. Accept only exit 0 with a
 		// successful detach, or exit 87 with "already detached" — never a bare text match.
 		writeFileSync(join(dir, "dp.txt"), [`select vdisk file="${vhdx}"`, "detach vdisk"].join("\r\n") + "\r\n");
@@ -1460,50 +1509,59 @@ function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
 		rmSync(vhdx, { force: true });
 	};
 	const points = new Set<string>();
-	try {
-		diskpart(`create vdisk file="${vhdx}" maximum=512 type=expandable`, `select vdisk file="${vhdx}"`, "attach vdisk", "create partition primary", `format fs=${fs} quick label=CANDS1`, `assign mount="${at}"`);
-		points.add(at);
-		const volume = run(["mountvol", at + "\\", "/L"]).trim();
-		expect(volume).toMatch(/^\\\\\?\\Volume\{[0-9a-f-]+\}\\$/i);
-		return {
-			mnt: at,
-			volume,
-			mount(at: string) {
-				mkdirSync(at, { recursive: true });
-				run(["mountvol", at + "\\", volume]);
-				points.add(at);
-			},
-			unmount(at: string) {
-				run(["mountvol", at + "\\", "/D"]);
-				points.delete(at);
-			},
-			/** Removes every mount point first: a recursive delete of the fixture must never reach the volume's files. */
-			done() {
-				for (const at of points) Bun.spawnSync(["mountvol", at + "\\", "/D"]);
-				points.clear();
+	const vol: FolderVolume = {
+		mnt: at,
+		volume: "",
+		mount(to: string) {
+			mkdirSync(to, { recursive: true });
+			run(["mountvol", to + "\\", vol.volume]);
+			points.add(to);
+		},
+		unmount(from: string) {
+			run(["mountvol", from + "\\", "/D"]);
+			points.delete(from);
+		},
+		/** Removes every mount point first: a recursive delete of the fixture must never reach the volume's files. */
+		done() {
+			const errors: unknown[] = [];
+			for (const p of points) {
+				// A mountvol call that itself throws is recorded; the other unmounts and the
+				// detach attempts still run.
+				try {
+					const r = Bun.spawnSync(["mountvol", p + "\\", "/D"]);
+					if (r.exitCode !== 0) errors.push(Error(`mountvol /D failed for ${basename(dir)}/${basename(p)} (exit=${r.exitCode})`));
+				} catch (e) {
+					errors.push(e);
+				}
+			}
+			points.clear();
+			try {
 				detachConfirmedThenDelete();
-			},
-		};
-	} catch (e) {
-		// Attach may have succeeded before format/mount registration failed: never leave an
-		// attached nested volume for the outer fixture recursive delete to erase unchecked.
-		for (const p of points) Bun.spawnSync(["mountvol", p + "\\", "/D"]);
-		points.clear();
-		detachConfirmedThenDelete();
-		throw e;
-	}
+			} catch (e) {
+				errors.push(e);
+			}
+			if (errors.length) throw combineErrors(errors, `volume teardown not confirmed for ${fixtureVhdx}`);
+		},
+	};
+	volumes.push(vol);
+	diskpart(`create vdisk file="${vhdx}" maximum=512 type=expandable`, `select vdisk file="${vhdx}"`, "attach vdisk", "create partition primary", `format fs=${fs} quick label=CANDS1`, `assign mount="${at}"`);
+	points.add(at);
+	vol.volume = run(["mountvol", at + "\\", "/L"]).trim();
+	expect(vol.volume).toMatch(/^\\\\\?\\Volume\{[0-9a-f-]+\}\\$/i);
+	return vol;
 }
 
 test.skipIf(!elevated)("S1: a volume mounted in a folder (no drive letter): git's chain is walked on its own volume and across every mount point; a git.exe on or under the workspace never runs, a legitimate one is accepted", async () => {
 	const f = fixture();
 	const saved = process.env.PATH;
-	const v = folderMountedVolume(join(realpathSync.native(f.dir), "vol"));
-	const volumes = [v];
+	const volumes: FolderVolume[] = [];
+	const body: { failed: boolean; error?: unknown } = { failed: false };
 	const fake = (p: string) => {
 		mkdirSync(dirname(p), { recursive: true });
 		writeFileSync(p, "not git (resolution refuses before any spawn)");
 	};
 	try {
+		const v = folderMountedVolume(join(realpathSync.native(f.dir), "vol"), volumes);
 		f.w("a.txt", "a");
 		f.g("add", ".");
 		f.g("commit", "-qm", "a");
@@ -1547,8 +1605,7 @@ test.skipIf(!elevated)("S1: a volume mounted in a folder (no drive letter): git'
 		v.unmount(m3);
 		expect(resolveGit(f.root, P(dirname(legit)))).toBe(legit);
 		// Nested: a second volume mounted in a folder of the first; the walk crosses both mount points.
-		const w2 = folderMountedVolume(join(f.dir, "vol2"), "ntfs", join(v.mnt, "nest"));
-		volumes.push(w2);
+		const w2 = folderMountedVolume(join(f.dir, "vol2"), volumes, "ntfs", join(v.mnt, "nest"));
 		fake(join(w2.mnt, "git.exe"));
 		await rejects(() => resolveGit(v.mnt, P(w2.mnt)), "git-inside-workspace");
 		expect(resolveGit(f.root, P(w2.mnt))).toBe(join(w2.mnt, "git.exe"));
@@ -1566,18 +1623,32 @@ test.skipIf(!elevated)("S1: a volume mounted in a folder (no drive letter): git'
 		rmdirSync(join(f.dir, "jv"));
 		// FAT32 (no reparse points, no file ids): a PATH entry there without git.exe is skipped; a git.exe there
 		// cannot be identified and fails closed.
-		const fat = folderMountedVolume(join(f.dir, "fat"), "fat32");
-		volumes.push(fat);
+		const fat = folderMountedVolume(join(f.dir, "fat"), volumes, "fat32");
 		mkdirSync(join(fat.mnt, "empty"));
 		expect(resolveGit(f.root, P(join(fat.mnt, "empty")))).toBe(host);
 		fake(join(fat.mnt, "g", "git.exe"));
 		await rejects(() => resolveGit(f.root, P(join(fat.mnt, "g"))), "git-identity-unavailable");
-	} finally {
-		process.env.PATH = saved;
-		clearMark();
-		for (const x of volumes.reverse()) x.done();
-		f.done();
+	} catch (e) {
+		body.failed = true;
+		body.error = e;
 	}
+	// A PATH restore failure is collected on its own: clearMark() and the volume teardown still run
+	// to the end, and the failure never masks the test body's original error.
+	try {
+		process.env.PATH = saved;
+	} catch (e) {
+		body.error = body.failed ? combineErrors([body.error, e], "test failed and PATH restore also failed") : e;
+		body.failed = true;
+	}
+	try {
+		clearMark();
+	} catch (e) {
+		// Volume teardown must still run, and a clearMark failure joins the reported errors
+		// instead of masking the test body's original failure.
+		body.error = body.failed ? combineErrors([body.error, e], "test failed and clearMark also failed") : e;
+		body.failed = true;
+	}
+	teardownVolumes(volumes, () => f.done(), body);
 }, 180_000);
 
 test.skipIf(!win)("S1/O1/O2: a reparse point of unknown type refuses; a link to an unreachable share is skipped without network I/O; DefineDosDevice redirections are not trusted", async () => {
