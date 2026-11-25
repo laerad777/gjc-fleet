@@ -6,6 +6,7 @@ import { basename, delimiter, dirname, isAbsolute, join, relative, resolve, sep 
 import { readAnchored, readAnchoredFile } from "./safe-reader";
 import { canonicalJson, REVIEW_BRANCH } from "./core";
 import {
+	FLEET_GIT_NAME,
 	isolatedGitEnvironment,
 	resolveProgram,
 	spawnGit,
@@ -348,7 +349,7 @@ async function collect(
  */
 export function gitProgram(untrusted: string[]): string {
 	try {
-		return resolveProgram("git", { untrusted });
+		return resolveProgram(FLEET_GIT_NAME, { untrusted });
 	} catch (error) {
 		if (error instanceof UntrustedProgramError) throw new Error("git_untrusted_location");
 		if (error && typeof error === "object" && (error as { code?: string }).code === "ENOENT")

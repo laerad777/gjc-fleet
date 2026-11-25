@@ -19,7 +19,10 @@ const preflightModule = fileURLToPath(new URL("../src/placement-preflight.ts", i
 const nodeModule = fileURLToPath(new URL("../src/node.ts", import.meta.url));
 const realGit = Bun.which("git");
 if (!realGit) throw new Error("test requires git on PATH");
-const realGitDir = dirname(realGit);
+/** Fleet Git resolves `git.exe` on Windows; may differ from Bun.which("git") when that is a .cmd/.bat. */
+const fleetGitName = windows ? "git.exe" : "git";
+const fleetGit = windows ? (Bun.which("git.exe") ?? realGit) : realGit;
+const fleetGitDir = dirname(fleetGit);
 const systemTail = windows ? [join(process.env.SystemRoot ?? "C:\\Windows", "System32")] : ["/usr/bin", "/bin"];
 
 let shared = "";
@@ -106,7 +109,7 @@ test("collectResult never runs a git planted in the workspace via the start dire
 	const top = await plant(identity.path);
 	const bin = await plant(join(identity.path, "bin"));
 	await writeFile(join(identity.path, "result.txt"), "worker result\n");
-	const r = fleet(workspaceModule, "collectResult", [identity, []], { cwd: identity.path, path: [".", "", "bin", realGitDir, ...systemTail] });
+	const r = fleet(workspaceModule, "collectResult", [identity, []], { cwd: identity.path, path: [".", "", "bin", fleetGitDir, ...systemTail] });
 	expect(ran(top)).toBe(false);
 	expect(ran(bin)).toBe(false);
 	expect(r).toMatchObject({ ok: true, value: { outputHead: f.baseCommit } });
@@ -119,7 +122,7 @@ test("F5: collectResult skips, and never runs, a git on PATH inside the workspac
 	const sibling = await plant(join(dirname(identity.path), "sibling-workspace"));
 	const inRepo = await plant(join(identity.repo, "tools"));
 	for (const dir of [sibling, inRepo]) {
-		const r = fleet(workspaceModule, "collectResult", [identity, []], { cwd: f.dir, path: [dir, realGitDir, ...systemTail] });
+		const r = fleet(workspaceModule, "collectResult", [identity, []], { cwd: f.dir, path: [dir, fleetGitDir, ...systemTail] });
 		expect(r).toMatchObject({ ok: true, value: { outputHead: f.baseCommit } });
 	}
 	expect(ran(sibling)).toBe(false);
@@ -130,15 +133,23 @@ test.skipIf(!windows)("PATHEXT ordering cannot make Fleet run a git.cmd or git.b
 	const f = await fixture();
 	const identity = await prepareWorkspace(f.input);
 	const tools = await plant(join(f.dir, "tools"), ["cmd", "bat"]);
-	const r = fleet(workspaceModule, "collectResult", [identity, []], { cwd: f.dir, path: [tools, realGitDir, ...systemTail], pathext: ".CMD;.BAT;.EXE;.COM" });
+	const r = fleet(workspaceModule, "collectResult", [identity, []], { cwd: f.dir, path: [tools, fleetGitDir, ...systemTail], pathext: ".CMD;.BAT;.EXE;.COM" });
 	expect(ran(tools)).toBe(false);
 	expect(r).toMatchObject({ ok: true, value: { outputHead: f.baseCommit } });
+}, 120_000);
+
+test.skipIf(!windows)("Fleet Git resolves only git.exe, skipping a trusted PATH that holds only git.cmd/git.bat", async () => {
+	const tools = await plant(join(shared, "trusted-cmd-only"), ["cmd", "bat"]);
+	const r = fleet(workspaceModule, "gitProgram", [[]], { cwd: shared, path: [tools, fleetGitDir, ...systemTail], pathext: ".CMD;.BAT;.EXE;.COM" });
+	expect(ran(tools)).toBe(false);
+	expect(r).toEqual({ ok: true, value: fleetGit });
+	expect(String((r as { ok: true; value: string }).value).toLowerCase().endsWith("\\" + fleetGitName)).toBe(true);
 }, 120_000);
 
 test("prepareWorkspace never runs a git planted in the source repository via the start directory or '.'", async () => {
 	const f = await fixture();
 	const planted = await plant(f.repo);
-	const r = fleet(workspaceModule, "prepareWorkspace", [f.input], { cwd: f.repo, path: [".", realGitDir, ...systemTail] });
+	const r = fleet(workspaceModule, "prepareWorkspace", [f.input], { cwd: f.repo, path: [".", fleetGitDir, ...systemTail] });
 	expect(ran(planted)).toBe(false);
 	expect(r).toMatchObject({ ok: true, value: { baseCommit: f.baseCommit, path: join(f.workspaceRoot, "task-attempt") } });
 }, 120_000);
@@ -152,7 +163,7 @@ test("prepareWorkspace skips, and never runs, a git on PATH inside the workspace
 				: await plant(join(f.repo, "tools"));
 		const r = fleet(workspaceModule, "prepareWorkspace", [f.input], {
 			cwd: f.dir,
-			path: [planted, realGitDir, ...systemTail],
+			path: [planted, fleetGitDir, ...systemTail],
 		});
 		expect(r).toMatchObject({ ok: true, value: { baseCommit: f.baseCommit } });
 		expect(ran(planted)).toBe(false);
@@ -171,7 +182,7 @@ async function inputFixture() {
 test("applyInput never runs a git planted in the workspace via the start directory or '.'", async () => {
 	const { approved, identity } = await inputFixture();
 	const planted = await plant(identity.path);
-	const r = fleet(inputsModule, "applyInput", [identity, approved], { cwd: identity.path, path: [".", realGitDir, ...systemTail] });
+	const r = fleet(inputsModule, "applyInput", [identity, approved], { cwd: identity.path, path: [".", fleetGitDir, ...systemTail] });
 	expect(ran(planted)).toBe(false);
 	expect(r).toEqual({ ok: true });
 	expect(await Bun.file(join(identity.path, "tracked.txt")).text()).toBe("authorized input bytes\n");
@@ -180,7 +191,7 @@ test("applyInput never runs a git planted in the workspace via the start directo
 test("applyInput skips, and never runs, a git on PATH inside the task workspace", async () => {
 	const { approved, identity } = await inputFixture();
 	const planted = await plant(join(identity.path, "bin"));
-	const r = fleet(inputsModule, "applyInput", [identity, approved], { cwd: dirname(identity.repo), path: [planted, realGitDir, ...systemTail] });
+	const r = fleet(inputsModule, "applyInput", [identity, approved], { cwd: dirname(identity.repo), path: [planted, fleetGitDir, ...systemTail] });
 	expect(r).toEqual({ ok: true });
 	expect(ran(planted)).toBe(false);
 	expect(await Bun.file(join(identity.path, "tracked.txt")).text()).toBe("authorized input bytes\n");
@@ -190,11 +201,11 @@ test("placement source probe never runs a git planted in the repository, via the
 	const f = await fixture();
 	const planted = await plant(f.repo);
 	const node: NodeConfig = { id: "NODEG", os: process.platform, arch: process.arch, roots: { fixture: f.repo }, workspaceRoot: f.workspaceRoot, enabled: true, draining: false, reachable: true, sdkReady: true, modelReady: true, models: [], modelProfiles: ["controlled"], operations: [], transport: { command: process.execPath, args: [] } };
-	const r = fleet(preflightModule, "probePlacementSource", [node, { repoId: "fixture", baseCommit: f.baseCommit }], { cwd: f.repo, path: [".", realGitDir, ...systemTail] });
+	const r = fleet(preflightModule, "probePlacementSource", [node, { repoId: "fixture", baseCommit: f.baseCommit }], { cwd: f.repo, path: [".", fleetGitDir, ...systemTail] });
 	expect(ran(planted)).toBe(false);
 	expect(r).toMatchObject({ ok: true, value: { source: { ok: true, code: "repo_and_exact_base_present" } } });
 	const tools = await plant(join(f.repo, "tools"));
-	const skipped = fleet(preflightModule, "probePlacementSource", [node, { repoId: "fixture", baseCommit: f.baseCommit }], { cwd: f.dir, path: [tools, realGitDir, ...systemTail] });
+	const skipped = fleet(preflightModule, "probePlacementSource", [node, { repoId: "fixture", baseCommit: f.baseCommit }], { cwd: f.dir, path: [tools, fleetGitDir, ...systemTail] });
 	expect(ran(tools)).toBe(false);
 	expect(skipped).toMatchObject({ ok: true, value: { source: { ok: true, code: "repo_and_exact_base_present" } } });
 }, 120_000);
@@ -235,7 +246,7 @@ test("F1: prepare and preflight with authorized source objects skip, and never r
 	const node = nodeConfig(f, { fixture: join(f.dir, "not-installed-source") });
 	const input = { taskId: "task", attemptId: "attempt", nodeId: node.id, inputDigest: sha256("input"), repoId: "fixture", baseCommit: f.baseCommit, inputPackage: pkg };
 	for (const action of ["prepare", "preflight"]) {
-		const r = fleet(nodeModule, "nodeOperation", [node, { action, input }], { cwd: f.dir, path: [sibling, realGitDir, ...systemTail] });
+		const r = fleet(nodeModule, "nodeOperation", [node, { action, input }], { cwd: f.dir, path: [sibling, fleetGitDir, ...systemTail] });
 		// Trusted PATH still has a real git outside the workspace: skip the planted entry and continue.
 		expect(r.ok).toBe(true);
 	}
@@ -251,7 +262,7 @@ test("F1: applyInput skips, and never runs, a git on PATH inside the workspace r
 				: await plant(join(f.repo, "tools"));
 		const r = fleet(inputsModule, "applyInput", [identity, approved], {
 			cwd: f.dir,
-			path: [planted, realGitDir, ...systemTail],
+			path: [planted, fleetGitDir, ...systemTail],
 		});
 		expect(r).toEqual({ ok: true });
 		expect(ran(planted)).toBe(false);
@@ -278,7 +289,7 @@ test("F2: when the Git program on PATH is removed within one process, the next G
 		"console.log(JSON.stringify(out));",
 		"",
 	].join("\n"));
-	const child = Bun.spawnSync([process.execPath, script], { cwd: f.dir, env: fleetEnv([upgraded, realGitDir, ...systemTail]), stdout: "pipe", stderr: "pipe", timeout: 60_000 });
+	const child = Bun.spawnSync([process.execPath, script], { cwd: f.dir, env: fleetEnv([upgraded, fleetGitDir, ...systemTail]), stdout: "pipe", stderr: "pipe", timeout: 60_000 });
 	expect(ran(upgraded)).toBe(true);
 	expect(JSON.parse(child.stdout.toString().trim().split("\n").pop() || "null")).toEqual([f.baseCommit, f.baseCommit]);
 }, 180_000);
@@ -290,7 +301,7 @@ test.skipIf(windows || process.getuid?.() === 0)("F3: a git whose mode has an ex
 	await mkdir(dir);
 	await writeFile(join(dir, "git"), '#!/bin/sh\necho ran >> "$(dirname "$0")/ran"\nexit 1\n');
 	await chmod(join(dir, "git"), 0o610);
-	const r = fleet(workspaceModule, "collectResult", [identity, []], { cwd: f.dir, path: [dir, realGitDir, ...systemTail] });
+	const r = fleet(workspaceModule, "collectResult", [identity, []], { cwd: f.dir, path: [dir, fleetGitDir, ...systemTail] });
 	expect(r).toMatchObject({ ok: true, value: { outputHead: f.baseCommit } });
 	expect(ran(dir)).toBe(false);
 }, 120_000);
@@ -301,7 +312,7 @@ test("F5: a PATH entry that is a symlink or junction into the workspace root is 
 	const sibling = await plant(join(f.workspaceRoot, "sibling-workspace"));
 	const link = join(f.dir, "linked-tools");
 	await symlink(sibling, link, windows ? "junction" : "dir");
-	const r = fleet(workspaceModule, "collectResult", [identity, []], { cwd: f.dir, path: [link, realGitDir, ...systemTail] });
+	const r = fleet(workspaceModule, "collectResult", [identity, []], { cwd: f.dir, path: [link, fleetGitDir, ...systemTail] });
 	expect(r).toMatchObject({ ok: true, value: { outputHead: f.baseCommit } });
 	expect(ran(sibling)).toBe(false);
 }, 120_000);
@@ -310,7 +321,7 @@ test("F5: a git in a workspace-root directory whose name starts with '..' is ins
 	const f = await fixture();
 	const identity = await prepareWorkspace(f.input);
 	const dotted = await plant(join(f.workspaceRoot, "..sibling"));
-	const r = fleet(workspaceModule, "collectResult", [identity, []], { cwd: f.dir, path: [dotted, realGitDir, ...systemTail] });
+	const r = fleet(workspaceModule, "collectResult", [identity, []], { cwd: f.dir, path: [dotted, fleetGitDir, ...systemTail] });
 	expect(r).toMatchObject({ ok: true, value: { outputHead: f.baseCommit } });
 	expect(ran(dotted)).toBe(false);
 }, 120_000);
@@ -358,10 +369,10 @@ test("R6-F1: a PATH git that is a symlink to a name-dispatching launcher runs un
 }, 180_000);
 
 test.skipIf(!windows)("R6-F2: UNC and \\\\?\\ PATH entries are never searched, as documented: only drive-letter entries are", async () => {
-	const unc = "\\\\localhost\\" + realGitDir[0] + "$" + realGitDir.slice(2);
-	const r = fleet(workspaceModule, "gitProgram", [[]], { cwd: shared, path: ["\\\\?\\" + realGitDir, unc] });
+	const unc = "\\\\localhost\\" + fleetGitDir[0] + "$" + fleetGitDir.slice(2);
+	const r = fleet(workspaceModule, "gitProgram", [[]], { cwd: shared, path: ["\\\\?\\" + fleetGitDir, unc] });
 	expect(r).toEqual({ ok: false, error: "git_unavailable" });
-	expect(fleet(workspaceModule, "gitProgram", [[]], { cwd: shared, path: [realGitDir] })).toEqual({ ok: true, value: realGit });
+	expect(fleet(workspaceModule, "gitProgram", [[]], { cwd: shared, path: [fleetGitDir] })).toEqual({ ok: true, value: fleetGit });
 }, 120_000);
 
 function probeNode(f: { repo: string }, workspaceRoot: string): NodeConfig {
@@ -371,7 +382,7 @@ function probeNode(f: { repo: string }, workspaceRoot: string): NodeConfig {
 test("R6-F3: placement source probe skips, and never runs, a git on PATH inside the workspace root", async () => {
 	const f = await fixture();
 	const sibling = await plant(join(f.workspaceRoot, "sibling-workspace"));
-	const r = fleet(preflightModule, "probePlacementSource", [probeNode(f, f.workspaceRoot), { repoId: "fixture", baseCommit: f.baseCommit }], { cwd: f.dir, path: [sibling, realGitDir, ...systemTail] });
+	const r = fleet(preflightModule, "probePlacementSource", [probeNode(f, f.workspaceRoot), { repoId: "fixture", baseCommit: f.baseCommit }], { cwd: f.dir, path: [sibling, fleetGitDir, ...systemTail] });
 	expect(ran(sibling)).toBe(false);
 	expect(r).toMatchObject({ ok: true, value: { source: { ok: true, code: "repo_and_exact_base_present" } } });
 }, 120_000);
@@ -381,7 +392,7 @@ test("R6-F3: a workspace root named through a junction or symlink still skips it
 	const sibling = await plant(join(f.workspaceRoot, "sibling-workspace"));
 	const alias = join(f.dir, "workspace-root-alias");
 	await symlink(f.workspaceRoot, alias, windows ? "junction" : "dir");
-	const r = fleet(preflightModule, "probePlacementSource", [probeNode(f, alias), { repoId: "fixture", baseCommit: f.baseCommit }], { cwd: f.dir, path: [sibling, realGitDir, ...systemTail] });
+	const r = fleet(preflightModule, "probePlacementSource", [probeNode(f, alias), { repoId: "fixture", baseCommit: f.baseCommit }], { cwd: f.dir, path: [sibling, fleetGitDir, ...systemTail] });
 	expect(ran(sibling)).toBe(false);
 	expect(r).toMatchObject({ ok: true, value: { source: { ok: true, code: "repo_and_exact_base_present" } } });
 }, 120_000);
