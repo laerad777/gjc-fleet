@@ -1,0 +1,292 @@
+name: Windows sharded test experiment
+
+# Experiment only: manual (workflow_dispatch), non-required, and completely outside the
+# required PR gate in ci.yml. It runs the full Windows suite twice in one run: once serial
+# (the baseline) and once split with `bun test --shard=M/2`, then sums the two shards and
+# compares against the serial job of the SAME commit. Every run also writes a JUnit file.
+# Base commit this draft was written against: laerad777/gjc-fleet 45ffc07 (45ffc07b767ce445fea1a9886a2a862f94ded1ae).
+# At that SHA `find test` lists 136 *.test.* files (checked in a fresh clone). Any other "N files"
+# figure (for example 143) is the "Ran X tests across N files" number Bun prints on a CI run of
+# some commit, and is NOT tied to 45ffc07 here: compare file counts only within one run.
+# The aggregate job fails unless ALL of these hold (counts alone are not enough, since one
+# missing file and one duplicate would cancel out):
+#   1. every run exited 0, produced a parseable non-empty JUnit file, and the JUnit test
+#      count equals the console total (pass + fail + skip + todo);
+#   2. shard 1 and shard 2 test-file path sets have an empty intersection and their union
+#      equals the serial path set (paths normalized);
+#   3. the count map {path/suite/line/title/status -> count} of shard 1 + shard 2 equals the
+#      serial one exactly. Status is pass, fail, skip (ordinary skip) or todo (<skipped
+#      message="TODO"/>). Bun 1.4.4 can emit the same file/suite/title/line twice, so keys are
+#      counted, never put in a set and never numbered by XML order;
+#   4. the files/pass/fail/skip/todo sums still match (kept as a cheap cross-check).
+# Cost: about 2 serial-equivalents of Windows runner time per dispatch.
+#
+# Setup mirrors the windows job in ci.yml (checkout, setup-bun pinned to Bun 1.4.4,
+# git --version, bun install --frozen-lockfile, bun test test) with the same SHA-pinned
+# actions.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # One experiment per ref at a time, but never cancel mid-run: partial data is useless.
+  group: windows-shard-experiment-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  serial:
+    name: Test (windows-latest, serial baseline)
+    runs-on: windows-latest
+    # Same budget as the serial windows job in ci.yml.
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.4"
+      - run: git --version
+      - run: bun install --frozen-lockfile
+      - name: Run the full suite and record counts and wall time
+        shell: bash
+        env:
+          NO_COLOR: "1"
+        run: |
+          set -o pipefail
+          # Drop an unreadable /root/.cargo/bin from PATH before running bun, then require the pin.
+          PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -vxF '/root/.cargo/bin' | paste -sd: -)
+          export PATH
+          [[ "$(bun --version)" == "1.4.4" ]] || { echo "::error::bun is not 1.4.4"; exit 1; }
+          log=$(mktemp)
+          trap 'rm -f "$log"' EXIT
+          start=$SECONDS
+          rc=0
+          bun test test --reporter=junit --reporter-outfile=serial-junit.xml 2>&1 | tee "$log" || rc=$?
+          wall=$((SECONDS - start))
+          # An empty or missing JUnit file is a failure even when bun exited 0.
+          if [[ ! -s "serial-junit.xml" ]] || ! grep -q '<testcase ' "serial-junit.xml"; then
+            echo "::error::serial-junit.xml is missing or has no test cases"
+            [[ $rc -ne 0 ]] || rc=1
+          fi
+          grab() { grep -oE "^ *[0-9]+ $1\$" "$log" | tail -1 | grep -oE '[0-9]+' || true; }
+          pass=$(grab pass)
+          fail=$(grab fail)
+          skip=$(grab skip)
+          todo=$(grab todo)
+          ran=$(grep -oE '^Ran [0-9]+ tests? across [0-9]+ files?\. \[[0-9.]+m?s\]$' "$log" | tail -1 || true)
+          files=$(printf '%s' "$ran" | grep -oE '[0-9]+' | sed -n 2p || true)
+          bun_s=$(printf '%s' "$ran" | grep -oE '[0-9.]+s' | tr -d 's' || true)
+          printf '{"pass":%s,"fail":%s,"skip":%s,"todo":%s,"files":%s,"wall_s":%s,"bun_s":%s,"exit":%s}\n' \
+            "${pass:-0}" "${fail:-0}" "${skip:-0}" "${todo:-0}" "${files:-0}" "$wall" "${bun_s:-0}" "$rc" > serial-result.json
+          cat serial-result.json
+          # Failing tests fail this job; the result is still uploaded below.
+          exit "$rc"
+      - name: Upload the serial result
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: serial-result
+          path: |
+            serial-result.json
+            serial-junit.xml
+          if-no-files-found: error
+
+  shard:
+    name: Test (windows-latest, shard ${{ matrix.shard }}/2)
+    runs-on: windows-latest
+    # Same budget as the serial job; each shard should finish well under it.
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: "1.4.4"
+      - run: git --version
+      - run: bun install --frozen-lockfile
+      - name: Run the shard and record counts and wall time
+        shell: bash
+        env:
+          NO_COLOR: "1"
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -o pipefail
+          # Drop an unreadable /root/.cargo/bin from PATH before running bun, then require the pin.
+          PATH=$(printf '%s' "$PATH" | tr ':' '\n' | grep -vxF '/root/.cargo/bin' | paste -sd: -)
+          export PATH
+          [[ "$(bun --version)" == "1.4.4" ]] || { echo "::error::bun is not 1.4.4"; exit 1; }
+          log=$(mktemp)
+          trap 'rm -f "$log"' EXIT
+          start=$SECONDS
+          rc=0
+          bun test test --shard="$SHARD/2" --reporter=junit --reporter-outfile="shard-junit-$SHARD.xml" 2>&1 | tee "$log" || rc=$?
+          wall=$((SECONDS - start))
+          # An empty or missing JUnit file is a failure even when bun exited 0.
+          if [[ ! -s "shard-junit-$SHARD.xml" ]] || ! grep -q '<testcase ' "shard-junit-$SHARD.xml"; then
+            echo "::error::shard-junit-$SHARD.xml is missing or has no test cases"
+            [[ $rc -ne 0 ]] || rc=1
+          fi
+          grab() { grep -oE "^ *[0-9]+ $1\$" "$log" | tail -1 | grep -oE '[0-9]+' || true; }
+          pass=$(grab pass)
+          fail=$(grab fail)
+          skip=$(grab skip)
+          todo=$(grab todo)
+          ran=$(grep -oE '^Ran [0-9]+ tests? across [0-9]+ files?\. \[[0-9.]+m?s\]$' "$log" | tail -1 || true)
+          files=$(printf '%s' "$ran" | grep -oE '[0-9]+' | sed -n 2p || true)
+          bun_s=$(printf '%s' "$ran" | grep -oE '[0-9.]+s' | tr -d 's' || true)
+          out="shard-result-${SHARD}.json"
+          printf '{"shard":%s,"pass":%s,"fail":%s,"skip":%s,"todo":%s,"files":%s,"wall_s":%s,"bun_s":%s,"exit":%s}\n' \
+            "$SHARD" "${pass:-0}" "${fail:-0}" "${skip:-0}" "${todo:-0}" "${files:-0}" "$wall" "${bun_s:-0}" "$rc" >"$out"
+          cat "$out"
+          # A shard with failing tests fails this job (fail-fast: false keeps the other
+          # shard running); the result is still uploaded below.
+          exit "$rc"
+      - name: Upload the shard result
+        if: ${{ always() }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: shard-result-${{ matrix.shard }}
+          path: |
+            shard-result-${{ matrix.shard }}.json
+            shard-junit-${{ matrix.shard }}.xml
+          if-no-files-found: error
+
+  aggregate:
+    name: Compare sharded run with the serial baseline
+    needs: [serial, shard]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: "*-result*"
+          merge-multiple: true
+      - name: Check path sets, per-test status and exit codes against serial
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, re, sys
+          from collections import Counter
+          import xml.etree.ElementTree as ET
+
+          errors = []
+          def err(msg):
+              errors.append(msg)
+              print("::error::" + msg)
+
+          def norm(p):
+              p = p.replace("\\", "/")
+              while p.startswith("./"):
+                  p = p[2:]
+              if re.match(r"^([A-Za-z]:)?/", p):
+                  i = p.find("/test/")
+                  p = p[i + 1:] if i >= 0 else re.sub(r"^([A-Za-z]:)?/+", "", p)
+              return p
+
+          def load(name, resultf, junitf):
+              """Return (result_json, paths set, Counter of (path, suite, line, title, status)); record errors."""
+              res, paths, tests = None, set(), Counter()
+              try:
+                  with open(resultf) as f:
+                      res = json.load(f)
+              except (OSError, ValueError) as e:
+                  err("%s: result file missing or unparseable (%s)" % (name, e))
+                  return res, paths, tests
+              if res.get("exit") != 0:
+                  err("%s: non-zero exit code %s" % (name, res.get("exit")))
+              try:
+                  root = ET.parse(junitf).getroot()
+              except (OSError, ET.ParseError) as e:
+                  err("%s: JUnit file missing or unparseable (%s)" % (name, e))
+                  return res, paths, tests
+              for suite in root.iter("testsuite"):
+                  sfile = suite.get("file")
+                  if sfile:
+                      paths.add(norm(sfile))
+              for tc in root.iter("testcase"):
+                  f = norm(tc.get("file") or "")
+                  if not f:
+                      err("%s: test case without a file: %r" % (name, tc.get("name")))
+                      continue
+                  paths.add(f)
+                  if tc.find("failure") is not None or tc.find("error") is not None:
+                      st = "fail"
+                  elif tc.find("skipped") is not None:
+                      st = "todo" if tc.find("skipped").get("message") == "TODO" else "skip"
+                  else:
+                      st = "pass"
+                  tests[(f, tc.get("classname") or "", tc.get("line") or "", tc.get("name") or "", st)] += 1
+              if not tests:
+                  err("%s: JUnit file has no test cases (empty result)" % name)
+              total = sum(res.get(k, 0) for k in ("pass", "fail", "skip", "todo"))
+              n = sum(tests.values())
+              if tests and n != total:
+                  err("%s: JUnit has %d test cases but the console total is %d" % (name, n, total))
+              return res, paths, tests
+
+          base = os.environ.get("RESULT_DIR", ".")
+          p = lambda n: os.path.join(base, n)
+          sres, spaths, stests = load("serial", p("serial-result.json"), p("serial-junit.xml"))
+          r1, p1, t1 = load("shard 1", p("shard-result-1.json"), p("shard-junit-1.xml"))
+          r2, p2, t2 = load("shard 2", p("shard-result-2.json"), p("shard-junit-2.xml"))
+
+          def show(items):
+              items = sorted(items)
+              more = "" if len(items) <= 15 else " ... (+%d more)" % (len(items) - 15)
+              return ", ".join(items[:15]) + more
+
+          # (1) path sets
+          both = p1 & p2
+          if both:
+              err("shard 1 and shard 2 both ran: " + show(both))
+          union = p1 | p2
+          if union != spaths:
+              if spaths - union:
+                  err("files in serial but in no shard: " + show(spaths - union))
+              if union - spaths:
+                  err("files in shards but not in serial: " + show(union - spaths))
+          # (2) count map: path/suite/line/title/status -> count
+          merged = t1 + t2
+          fmt = lambda k: "/".join(k)
+          if merged != stests:
+              miss = stests - merged   # serial has more of these than the shards
+              extra = merged - stests  # shards have more of these than serial
+              if miss:
+                  err("%d key(s) short in shards vs serial: %s" % (len(miss), show("%s (serial %d, shards %d)" % (fmt(k), stests[k], merged[k]) for k in miss)))
+              if extra:
+                  err("%d key(s) extra in shards vs serial: %s" % (len(extra), show("%s (serial %d, shards %d)" % (fmt(k), stests[k], merged[k]) for k in extra)))
+          # (3) cheap cross-check of the old sums
+          if sres and r1 and r2:
+              for k in ("files", "pass", "fail", "skip", "todo"):
+                  got = r1.get(k, 0) + r2.get(k, 0)
+                  if got != sres.get(k, 0):
+                      err("%s mismatch: shards sum to %d, serial has %d" % (k, got, sres.get(k, 0)))
+
+          summary = ["# Windows sharded test experiment", "",
+                     "| metric | shard 1 + shard 2 | serial |", "| --- | ---: | ---: |",
+                     "| test files (JUnit paths) | %d (%d + %d, overlap %d) | %d |" % (len(union), len(p1), len(p2), len(both), len(spaths)),
+                     "| test cases (count map total) | %d | %d |" % (sum(merged.values()), sum(stests.values())),
+                     "| distinct keys | %d | %d |" % (len(merged), len(stests))]
+          for k in ("pass", "fail", "skip", "todo"):
+              summary.append("| %s | %d | %d |" % (k, sum(c for key, c in merged.items() if key[4] == k), sum(c for key, c in stests.items() if key[4] == k)))
+          if sres and r1 and r2:
+              summary.append("| wall time | max %ss per shard | %ss |" % (max(r1.get("wall_s", 0), r2.get("wall_s", 0)), sres.get("wall_s", 0)))
+          summary.append("")
+          summary.append("**FAIL: %d problem(s), see errors above.**" % len(errors) if errors else "**PASS: path sets, the per-key count map and exit codes all match serial.**")
+          out = "\n".join(summary)
+          print(out)
+          if os.environ.get("GITHUB_STEP_SUMMARY"):
+              with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+                  f.write(out + "\n")
+          sys.exit(1 if errors else 0)
+          PY
