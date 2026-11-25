@@ -129,6 +129,9 @@ test("M1: a suspend with a frozen monotonic clock and a coincident backward wall
 	neverAhead(run(true), run(false));
 });
 
+// Reopening the SQLite database for every probe can exceed Bun’s default 5 s on hosted Windows.
+const restartTimeoutMs = process.platform === "win32" ? 30_000 : undefined;
+
 test("M2: a producer that restarts every 10 s (probing every 10 s) on one host still reaches stable", () => {
 	const real = { t: 0 }, p = path();
 	let first: number | null = null;
@@ -140,7 +143,7 @@ test("M2: a producer that restarts every 10 s (probing every 10 s) on one host s
 		h.close();
 	}
 	expect(first).not.toBeNull();
-});
+}, restartTimeoutMs);
 
 test("M2: restart downtime + cadence above 35 s with one probe per lifetime still reaches stable within the stated probe bound", () => {
 	// c = 30 s, lifetime 30 s, downtime 10 s; one writer per probe, so bound 1 + (consecutive - 1) * restartFallbackWriters = 129 probes.
@@ -155,7 +158,7 @@ test("M2: restart downtime + cadence above 35 s with one probe per lifetime stil
 	}
 	expect(stableAt).not.toBeNull();
 	expect(stableAt!).toBeLessThanOrEqual(129);
-});
+}, restartTimeoutMs);
 
 test("L1: opening the sidecar first on a new shared fleet DB path does not make FleetStore refuse the file", () => {
 	const p = path();

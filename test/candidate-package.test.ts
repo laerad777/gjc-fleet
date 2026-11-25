@@ -1450,6 +1450,10 @@ function teardownVolumes(volumes: FolderVolume[], removeOuter: () => void, body:
 function folderMountedVolume(dir: string, volumes: FolderVolume[], fs = "ntfs", at = join(dir, "mnt")): FolderVolume {
 	mkdirSync(dir, { recursive: true });
 	mkdirSync(at, { recursive: true });
+	// Normalize once before attaching. DiskPart and Get-DiskImage must use the same
+	// long path, including for nested and FAT32 fixtures created under the runner temp directory.
+	dir = realpathSync.native(dir);
+	at = realpathSync.native(at);
 	const vhdx = join(dir, "v.vhdx");
 	const fixtureVhdx = `${basename(dir)}/${basename(vhdx)}`;
 	const diskpart = (...lines: string[]) => {
@@ -1491,22 +1495,38 @@ function folderMountedVolume(dir: string, volumes: FolderVolume[], fs = "ntfs", 
 				"}",
 			].join("\r\n") + "\r\n",
 		);
-		const probe = Bun.spawnSync(
-			["powershell", "-NoProfile", "-File", join(dir, "probe-attached.ps1"), "-ImagePath", vhdx],
-			{ stdout: "pipe", stderr: "pipe", timeout: 30_000 },
-		);
-		const attachedLines = `${probe.stdout}`
-			.toString()
-			.split(/\r?\n/)
-			.map((l) => l.trim())
-			.filter((l) => /^Attached=(?:true|false|unknown)$/.test(l));
-		if (probe.exitCode !== 0 || attachedLines.length !== 1 || attachedLines[0] !== "Attached=false") {
-			const attached = attachedLines.length === 1 ? attachedLines[0].slice("Attached=".length) : `count=${attachedLines.length}`;
-			throw Error(
-				`vhdx not confirmed detached for ${fixtureVhdx} (probeExit=${probe.exitCode}; Attached=${attached}); skipped delete`,
+		const probeBudgetMs = 30_000;
+		const deadline = performance.now() + probeBudgetMs;
+		let lastProbe = "not run";
+		for (;;) {
+			const remainingMs = Math.floor(deadline - performance.now());
+			if (remainingMs <= 0) break;
+			const probe = Bun.spawnSync(
+				["powershell", "-NoProfile", "-File", join(dir, "probe-attached.ps1"), "-ImagePath", vhdx],
+				{ stdout: "pipe", stderr: "pipe", timeout: remainingMs },
 			);
+			const attachedLines = probe.stdout
+				.toString()
+				.split(/\r?\n/)
+				.map((line) => line.trim())
+				.filter((line) => /^Attached=/i.test(line));
+			const attached = attachedLines.length !== 1 ? `count=${attachedLines.length}`
+				: attachedLines[0] === "Attached=false" ? "false"
+				: attachedLines[0] === "Attached=true" ? "true"
+				: attachedLines[0] === "Attached=unknown" ? "unknown" : "invalid";
+			lastProbe = `probeExit=${probe.exitCode}; Attached=${attached}`;
+			if (probe.exitCode === 0 && attached === "false") {
+				rmSync(vhdx, { force: true });
+				return;
+			}
+			// Only a well-formed Attached=true can be transient. An invalid response
+			// or failed probe still blocks deletion immediately.
+			if (probe.exitCode !== 0 || attached !== "true") break;
+			const pauseMs = Math.min(250, Math.floor(deadline - performance.now()));
+			if (pauseMs <= 0) break;
+			Bun.sleepSync(pauseMs);
 		}
-		rmSync(vhdx, { force: true });
+		throw Error(`vhdx not confirmed detached for ${fixtureVhdx} (detachExit=${detach.exitCode}; ${lastProbe}); skipped delete`);
 	};
 	const points = new Set<string>();
 	const vol: FolderVolume = {
