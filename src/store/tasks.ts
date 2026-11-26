@@ -1,7 +1,7 @@
 import type { FleetStore } from "./fleet-store";
 import { randomUUID } from "node:crypto";
 import { Json, NodeConfig, OperationIntent, TaskInput, TaskRecord, TaskState } from "../contracts";
-import { FleetError, canonicalJson, demand, digest, object, placementRecord, selectNode, sendRefusals, subjectNodeId, text, validateNode, validateTaskInput } from "../core";
+import { FleetError, canonicalJson, demand, digest, object, placementRecord, selectNodeWithReason, sendRefusals, subjectNodeId, text, validateNode, validateTaskInput } from "../core";
 import { DEFAULT_ADMISSION_POLICY, HeldCharge } from "../admission";
 import { progressSettled } from "../progress";
 import { ExternalManifest } from "../result-store";
@@ -532,7 +532,7 @@ export abstract class StoreTasks extends StoreCore {
 				const now = Date.now();
 				const policy = resources?.policy ?? DEFAULT_ADMISSION_POLICY;
 				const states = this.taskStates();
-				const selection = selectNode(
+				const selection = selectNodeWithReason(
 					task.input,
 					this.nodes().filter((node) => !excluded.has(node.id)),
 					states,

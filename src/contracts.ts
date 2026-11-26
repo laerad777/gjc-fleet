@@ -397,3 +397,6 @@ export interface Selection {
 	nodeId?: string;
 	exclusions: NodeExclusion[];
 }
+/** Fixed public codes for the criterion that decided a successful reservation. */
+export const SELECTED_NODE_REASONS = ["only_eligible_node", "higher_preference", "fewer_held_tasks", "node_id_tiebreak"] as const;
+export type SelectedNodeReason = (typeof SELECTED_NODE_REASONS)[number];

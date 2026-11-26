@@ -8,6 +8,7 @@ import type {
 	NodeExclusion,
 	Observation,
 	Phase,
+	SelectedNodeReason,
 	Selection,
 	TaskInput,
 	TaskPlacement,
@@ -608,6 +609,18 @@ export function selectNode(
 	/** subjectNodeId(input, ...): excluded with reason `subject_node`. */
 	subjectNode?: string,
 ): Selection {
+	const { reason: _reason, ...selection } = selectNodeWithReason(input, nodes, tasks, admission, subjectNode);
+	return selection;
+}
+
+/** The reservation audit uses the ranked candidates from this decision, not a later reconstruction. */
+export function selectNodeWithReason(
+	input: TaskInput,
+	nodes: NodeConfig[],
+	tasks: readonly TaskState[],
+	admission?: AdmissionContext,
+	subjectNode?: string,
+): Selection & { reason?: SelectedNodeReason } {
 	// No slot limits: a node's new work is bounded only by measured resource headroom.
 	// Without an admission context (in-process callers and tests) only the hard filters apply.
 	const held = tasks.filter((task) => task.held);
@@ -666,10 +679,13 @@ export function selectNode(
 			a.load - b.load ||
 			(a.node.id < b.node.id ? -1 : a.node.id > b.node.id ? 1 : 0),
 	);
-	return {
-		...(eligible[0] ? { nodeId: eligible[0].node.id } : {}),
-		exclusions,
-	};
+	const [winner, next] = eligible;
+	if (!winner) return { exclusions };
+	const reason = !next ? "only_eligible_node"
+		: winner.preference < next.preference ? "higher_preference"
+			: winner.load < next.load ? "fewer_held_tasks"
+				: "node_id_tiebreak";
+	return { nodeId: winner.node.id, exclusions, reason };
 }
 /**
  * THE classification of every node exclusion reason (selectNode, admission.ts resourceReasons, the
