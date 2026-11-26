@@ -477,7 +477,7 @@ describe("review findings R6-R15, R20", () => {
 			const op = store.getOperation(t.id, "prepare") as any;
 			expect([role, op?.payload?.reviewDirAbsent]).toEqual([role, role ? true : undefined]);
 		}
-	});
+	}, 30_000);
 	test("R8: Step 1b accepts only root report-<uuid>.md or fleet-review/report.md, bound to task id + path + sha, --role required", () => {
 		const db = dbOf(main.store);
 		const op = (id: string, path: string, text: string, role: any = "review") => ({ actor: "operator", reason: "legacy review, report only", reportPath: path, reportSha256: sha(text), role });

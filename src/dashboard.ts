@@ -1178,6 +1178,8 @@ const SAMPLE_STALE_MS = 12_000;
 const STREAM_STALL_MS = 45_000;
 /** How long a stopped stream process gets after SIGTERM before it is sent SIGKILL. */
 const STOP_KILL_GRACE_MS = 1_000;
+/** Drain final stdout after the direct transport exits, but do not wait for inherited pipe EOF. */
+const STREAM_EXIT_DRAIN_MS = 250;
 
 const LINUX_STREAM = `n=$(grep -c '^cpu[0-9]' /proc/stat)
 p=$(LC_ALL=C lscpu -p=SOCKET,CORE 2>/dev/null | awk '!/^#/ && !seen[$0]++ {n++} END{print n+0}')
@@ -1365,12 +1367,30 @@ export function startResourceStreams(
 		let awaiting = false;
 		let lastOutput = Date.now();
 		let stalled = false;
+		let ioClosed = false;
+		let exitDrain: ReturnType<typeof setTimeout> | undefined;
+		const stdoutReader = (proc.stdout as ReadableStream<Uint8Array>).getReader();
+		const stderrReader = (proc.stderr as ReadableStream<Uint8Array>).getReader();
+		const closeIO = () => {
+			if (ioClosed) return;
+			ioClosed = true;
+			clearInterval(ticker);
+			if (exitDrain) clearTimeout(exitDrain);
+			try {
+				proc.stdin.end();
+			} catch {}
+			// An SSH ControlPersist process may own inherited pipe writers. Close our ends
+			// instead of signalling the process group or waiting for those writers to leave.
+			void stdoutReader.cancel().catch(() => {});
+			void stderrReader.cancel().catch(() => {});
+		};
 		const tick = () => {
+			if (ioClosed) return;
 			const now = Date.now();
-			if (!stalled && now - lastOutput > stallMs) {
-				// Frozen remote (e.g. hibernated sandbox): end this process; the exit handler reconnects.
-				// Immediate SIGKILL: a SIGTERM trap would otherwise block reconnect until hub stop.
+			if (now - lastOutput > stallMs) {
+				// A frozen transport must not block reconnect on stdout EOF or ignore SIGTERM.
 				stalled = true;
+				closeIO();
 				try {
 					proc.kill("SIGKILL");
 				} catch {}
@@ -1385,28 +1405,25 @@ export function startResourceStreams(
 				proc.stdin.flush();
 			} catch {}
 		};
-		if (command.script) proc.stdin.write(command.script);
-		tick();
 		const ticker = setInterval(tick, 250);
-		proc.exited.then(() => clearInterval(ticker));
-		// Explicit readers so a stop can cancel them: a child's own child (an ssh ControlPersist master)
-		// can hold the pipes open long after the child is gone, and a pending read keeps the process alive.
-		const stdoutReader = (proc.stdout as ReadableStream<Uint8Array>).getReader();
-		const stderrReader = (proc.stderr as ReadableStream<Uint8Array>).getReader();
-		const stderr = (async () => {
-			const decoder = new TextDecoder();
-			let text = "";
+		if (command.script) {
 			try {
-				for (let read = await stderrReader.read(); !read.done; read = await stderrReader.read())
-					text += decoder.decode(read.value, { stream: true });
+				proc.stdin.write(command.script);
 			} catch {}
-			return text;
+		}
+		tick();
+		void proc.exited.then(() => {
+			clearInterval(ticker);
+			if (!ioClosed) exitDrain = setTimeout(closeIO, STREAM_EXIT_DRAIN_MS);
+		});
+		// Drain stderr without retaining its unused contents.
+		void (async () => {
+			try {
+				while (!(await stderrReader.read()).done) {}
+			} catch {}
 		})();
 		entry.release = () => {
-			clearInterval(ticker);
-			try {
-				proc.stdin.end();
-			} catch {}
+			closeIO();
 			// Hub stop / process exit: SIGKILL immediately. setTimeout grace cannot run on `exit`, and a
 			// child that traps SIGTERM would otherwise outlive the hub. Per-node reconcile drops keep the grace.
 			if (stopped) {
@@ -1424,20 +1441,18 @@ export function startResourceStreams(
 				}, STOP_KILL_GRACE_MS);
 				proc.exited.then(() => clearTimeout(escalate));
 			}
-			stdoutReader.cancel().catch(() => {});
-			stderrReader.cancel().catch(() => {});
 		};
-		(async () => {
+		void (async () => {
 			let counters: { idle: number; total: number } | undefined;
 			let sampled = false;
 			let buffer = "";
 			const decoder = new TextDecoder();
 			try {
-				for (let read = await stdoutReader.read(); !read.done; read = await stdoutReader.read()) {
+				for (let read = await stdoutReader.read(); !read.done && !ioClosed; read = await stdoutReader.read()) {
 					lastOutput = Date.now();
 					buffer += decoder.decode(read.value, { stream: true });
 					let newline = buffer.indexOf("\n");
-					while (newline >= 0) {
+					while (newline >= 0 && !ioClosed) {
 						const line = buffer.slice(0, newline).trim();
 						const parsed = parseResourceLine(line, counters);
 						buffer = buffer.slice(newline + 1);
@@ -1453,8 +1468,9 @@ export function startResourceStreams(
 				}
 			} catch {}
 			await proc.exited;
+			closeIO();
 			if (stopped || entries.get(nodeId) !== entry || entry.proc !== proc) return;
-			if (proc.exitCode === 0 && sampled) {
+			if (!stalled && proc.exitCode === 0 && sampled) {
 				// Planned end (lifetime cap): reconnect at once; the stale check covers the gap.
 				launch(nodeId);
 				return;
