@@ -450,8 +450,8 @@ describe("round-7: operator ignore rules reached through includes, symlinked rul
 		});
 	// Round 9: a repository condition is evaluated on the source repository at preparation;
 	// the workspace's branch (worker-controlled) never selects or deselects a node rule.
-	test("includeIf onbranch in ~/.gitconfig is evaluated on the source repository at preparation, never on the workspace's branch", async () => {
-		for (const preparedUnderHome of [false, true]) {
+	for (const preparedUnderHome of [false, true]) {
+		test(`includeIf onbranch in ~/.gitconfig is evaluated on the source repository at preparation, never on the workspace's branch [prepared with operator config: ${preparedUnderHome}]`, async () => {
 			const f = await repositoryFixture("fleet-collection-identity-");
 			directories.push(f.dir);
 			const rules = join(f.dir, "global-op.ignore");
@@ -482,8 +482,8 @@ describe("round-7: operator ignore rules reached through includes, symlinked rul
 				await gitOk(["config", "core.excludesFile", "/dev/null"], identity.path);
 				await check(await collectResult(identity, []));
 			});
-		}
-	});
+		});
+	}
 	for (const layout of ["include", "includeIf-gitdir"] as const)
 		test(`reviewer ${layout === "include" ? "X1" : "X1b"} (LOW-1): a repository core.excludesFile set through ${layout} at preparation survives the worker removing the include`, async () => {
 			const section = (repo: string) => (layout === "include" ? "include" : `includeIf.gitdir:${configPath(repo)}/`);
