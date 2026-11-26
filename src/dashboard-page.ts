@@ -1,9 +1,10 @@
 /** Self-contained dashboard page served by `gjc-fleet ui`; no external assets. */
 export const DASHBOARD_HTML = `<!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#f3f4fb">
 <meta name="theme-color" content="#07080c">
 <title>GJC Fleet Dashboard</title>
 <style>
@@ -276,9 +277,198 @@ footer{text-align:center;font-size:11px;color:var(--dim)}
 .ss-title{font-size:13.5px;font-weight:600;letter-spacing:-.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ss-title.none{color:var(--dim);font-weight:500}
 .tk-key{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+/* Light fleet map. Legacy console tokens above stay untouched. */
+body.fleet-light{background:#f3f4fb;color:#1c1733;padding:0}
+body.fleet-light .aurora,body.fleet-light .wrap{display:none!important}
+.fm{position:relative;z-index:1;min-height:100vh;padding:calc(22px + env(safe-area-inset-top)) 32px calc(28px + env(safe-area-inset-bottom));background-color:#f4f5fb;background-image:radial-gradient(rgba(90,80,140,.13) 1px,transparent 1.2px);background-size:22px 22px;color:#1c1733;font-family:"Avenir Next","Segoe UI",sans-serif}
+.fm-top{display:flex;justify-content:space-between;align-items:flex-end;gap:28px;max-width:1120px;margin:0 auto}
+.fm-brand{display:flex;align-items:center;gap:10px;font-size:12px;font-weight:750;letter-spacing:.18em;text-transform:uppercase;color:#8d89a3}
+.fm-pill{display:inline-flex;align-items:center;gap:6px;letter-spacing:0;text-transform:none;font-weight:650;font-size:12px;color:#6b5670;background:#fff;border:1px solid #f0e4cc;border-radius:999px;padding:3px 9px 3px 7px}
+.fm-pill i{width:7px;height:7px;border-radius:50%;background:#f5a524}
+.fm-pill.is-ok{color:#176b45;border-color:#d5f0e4}.fm-pill.is-ok i{background:#1f9d62}
+.fm-pill.is-bad{color:#b4233c;border-color:#ffd5de}.fm-pill.is-bad i{background:#e11d48}
+.fm-link{letter-spacing:0;text-transform:none;font-size:11px;font-weight:650;color:#8d89a3}
+.fm-link.is-live{color:#1f8a5b}.fm-link.is-down{color:#e11d48}
+.fm-title{font-family:"Iowan Old Style",Palatino,Georgia,serif;font-size:46px;font-weight:560;letter-spacing:-.03em;line-height:1.02;margin:10px 0 0;color:#1b1533}
+.fm-title em{font-style:italic}
+.fm-sub{font-family:"Iowan Old Style",Palatino,Georgia,serif;font-size:22px;line-height:1.25;margin-top:6px;color:#241c3d}
+.fm-sub em{color:#6d5efc;font-style:italic}
+.fm-side{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.fm-metrics{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:26px}
+.fm-age{flex-basis:100%;justify-content:flex-end}
+.fm-metric{text-align:center;min-width:74px}
+.fm-metric .k{display:block;font-size:11px;font-weight:750;letter-spacing:.14em;text-transform:uppercase;color:#8d89a3}
+.fm-metric b{display:block;margin-top:4px;font-family:"Iowan Old Style",Palatino,Georgia,serif;font-size:40px;font-weight:560;letter-spacing:-.03em;line-height:1;color:#1b1533}
+.fm-metric.is-alert b{color:#e11d48}
+.fm-age{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#b7791f}
+.fm-age i{width:7px;height:7px;border-radius:50%;background:#f5a524}
+.fm-banners{max-width:1120px;margin:16px auto 0}
+.fm-lease{display:flex;align-items:center;justify-content:space-between;gap:16px;background:#fffaf3;border:1px solid #ffe0b8;border-radius:16px;padding:12px 16px}
+.fm-lease b{display:block;color:#9a6700;font-size:14px}
+.fm-lease p{color:#8a6a32;font-size:13px;margin-top:2px}
+.fm-clock{font-family:"Iowan Old Style",Palatino,Georgia,serif;font-size:32px;color:#9a6700;font-variant-numeric:tabular-nums}
+.fm-stage{position:relative;max-width:1120px;height:min(640px,62vh);min-height:460px;margin:18px auto 0}
+.fm-stage::before{content:"";position:absolute;left:50%;top:48%;width:460px;height:460px;transform:translate(-50%,-50%);background:radial-gradient(circle,rgba(140,130,255,.2),transparent 68%);pointer-events:none}
+.fm-lines{position:absolute;inset:0;z-index:1;pointer-events:none}
+.fm-lines svg{width:100%;height:100%;display:block;overflow:visible}
+.fm-line{fill:none;stroke-width:1.7px;vector-effect:non-scaling-stroke}
+.fm-ssh-connected{stroke:#1f9d62}
+.fm-ssh-stale{stroke:#e0a04a;stroke-dasharray:5 4}
+.fm-ssh-unknown{stroke:#b7b4c9;stroke-dasharray:1.5 5;stroke-linecap:round}
+.fm-dispatch{stroke:#6d8cff;stroke-dasharray:7 5}
+.fm-gone{stroke:#c5c3d4;stroke-dasharray:1.5 6;stroke-linecap:round}
+.fm-dot{stroke:none}
+.fm-dot.fm-ssh-connected{fill:#1f9d62}
+.fm-dot.fm-ssh-stale{fill:#e0a04a}
+.fm-dot.fm-ssh-unknown{fill:#b7b4c9}
+.fm-dot.fm-dispatch{fill:#6d8cff}
+.fm-dot.fm-gone{fill:#c5c3d4}
+.fm-hub{position:absolute;left:50%;top:50%;z-index:2;width:84px;height:84px;transform:translate(-50%,-50%);border-radius:50%;display:grid;place-items:center;background:radial-gradient(circle,#fff,#f3f0ff 72%);box-shadow:0 0 0 12px rgba(255,255,255,.72),0 0 0 26px rgba(196,186,255,.28)}
+.fm-hub svg{width:42px;height:42px}
+.fm-sr{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+.fm-queue-wrap{position:absolute;left:50%;top:calc(50% + 64px);transform:translateX(-50%);z-index:2}
+.fm-queue{font-size:10px;font-weight:750;letter-spacing:.16em;text-transform:uppercase;color:#9a96ad;white-space:nowrap}
+.fm-nodes{position:absolute;inset:0;z-index:3}
+.fm-node{position:absolute;width:150px;transform:translate(-50%,-46px)}
+.fm-drift{position:relative;width:92px;height:92px;margin:0 auto;animation:fm-drift 18s ease-in-out infinite;animation-delay:var(--delay,0s)}
+@keyframes fm-drift{0%,100%{transform:translate(0,0)}50%{transform:translate(var(--dx,6px),var(--dy,-6px))}}
+.fm-stage:hover .fm-drift,.fm-stage.is-paused .fm-drift{animation-play-state:paused}
+.fm-node.is-down .fm-drift::before{content:"";position:absolute;inset:-12px;border:1.5px dashed #d5d2e2;border-radius:50%;pointer-events:none}
+.fm-orb{width:92px;height:92px;padding:0;border-radius:50%;border:1px solid rgba(120,110,180,.14);background:#fff;box-shadow:0 12px 30px rgba(70,60,140,.1);display:grid;place-items:center;cursor:pointer}
+.fm-orb svg{width:46px;height:46px}
+.fm-node.is-down .fm-orb{opacity:.42;background:#f7f7fb;box-shadow:none}
+.fm-count{position:absolute;top:-2px;right:-2px;z-index:2;min-width:22px;height:22px;padding:0 6px;border-radius:999px;border:2px solid #fff;background:#6d5efc;color:#fff;font-size:12px;font-weight:750;display:grid;place-items:center;box-shadow:0 4px 10px rgba(80,70,180,.28)}
+.fm-count.is-risk{background:#e11d48;box-shadow:0 4px 10px rgba(225,29,72,.28)}
+.fm-name{margin:8px auto 0;text-align:center;font-size:14px;font-weight:750;letter-spacing:-.02em;color:#241c3d;overflow-wrap:anywhere;width:fit-content;max-width:100%;padding:0 5px;background:#f4f5fb;border-radius:6px;position:relative;z-index:2}
+.fm-os{text-align:center;font-size:11px;color:#8d89a3;width:fit-content;max-width:100%;margin:0 auto;padding:0 5px;background:#f4f5fb;border-radius:6px;position:relative;z-index:2}
+.fm-node.is-down .fm-name,.fm-node.is-down .fm-os{color:#a29eb4}
+.fm-badges{display:flex;flex-direction:column;align-items:center;gap:4px;margin-top:6px}
+.fm-badge{display:inline-flex;align-items:center;gap:4px;border-radius:999px;padding:3px 8px;font-size:10px;font-weight:750;letter-spacing:.04em;white-space:nowrap}
+.fm-badge.down{color:#e11d48;background:#ffe4ea}
+.fm-badge.risk{color:#9a6700;background:#fff4d6}
+.fm-badge.quiet{color:#6b657c;background:#eef0f6}
+.fm-peek{display:none;position:absolute;left:50%;bottom:calc(100% + 10px);transform:translateX(-50%);width:190px;padding:10px 12px;border-radius:14px;background:#fff;box-shadow:0 12px 40px rgba(40,30,80,.14);text-align:left;z-index:5}
+.fm-peek b{display:block;font-size:13px}
+.fm-peek span{display:block;margin-top:2px;font-size:11px;color:#6b657c}
+.fm-node.is-peek .fm-peek{display:block}
+.fm-node:hover,.fm-node.is-peek{z-index:4}
+.fm-orb:focus-visible,.fm-x:focus-visible{outline:2px solid #6d5efc;outline-offset:3px}
+.fm-foot{max-width:1120px;margin:8px auto 0;display:flex;justify-content:space-between;align-items:flex-end;gap:18px}
+.fm-legend{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center;font-size:10px;font-weight:750;letter-spacing:.12em;text-transform:uppercase;color:#8d89a3}
+.fm-key{display:inline-flex;align-items:center;gap:6px}
+.sw{width:28px;height:0;border-top-width:2px;border-top-style:dashed;display:inline-block}
+.sw-dispatch{border-top-color:#6d8cff}
+.sw-gone{border-top-color:#c5c3d4;border-top-style:dotted}
+.sw-connected{border-top-color:#1f9d62;border-top-style:solid}
+.sw-stale{border-top-color:#e0a04a}
+.sw-unknown{border-top-color:#b7b4c9;border-top-style:dotted}
+.fm-hint{font-family:"Iowan Old Style",Palatino,Georgia,serif;font-style:italic;font-size:14px;color:#8d89a3}
+.fm-hint-narrow{display:none}
+.fm-sheet{display:none;position:fixed;inset:0;z-index:30}
+.fm-sheet.is-open{display:block}
+.fm-backdrop{position:absolute;inset:0;z-index:0;background:#f4f5fb}
+.fm-x{position:absolute;top:18px;right:18px;z-index:3;width:40px;height:40px;border:0;border-radius:50%;background:#fff;color:#1c1733;font-size:20px;cursor:pointer;box-shadow:0 6px 20px rgba(40,30,80,.08)}
+.fm-panel{position:absolute;inset:0;z-index:1;overflow:auto;display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr);gap:12px 56px;padding:64px 56px 40px;max-width:1080px;margin:0 auto;background:#f4f5fb}
+.fm-ident-orb{position:relative;width:148px;height:148px;border-radius:50%;background:#fff;display:grid;place-items:center;box-shadow:0 16px 40px rgba(70,60,140,.1)}
+.fm-ident-orb svg{width:74px;height:74px}
+.fm-ident-orb.is-down{opacity:.55;background:#f7f7fb;box-shadow:none;outline:1.5px dashed #d5d2e2;outline-offset:10px}
+.fm-ident-orb .fm-count{top:8px;right:8px}
+.fm-ident-name{margin-top:18px;font-family:"Iowan Old Style",Palatino,Georgia,serif;font-size:48px;font-weight:560;letter-spacing:-.03em;line-height:1;color:#1b1533;overflow-wrap:anywhere}
+.fm-ident-status{margin-top:8px;color:#8d89a3;font-size:14px}
+.fm-ident-status.is-down{color:#e11d48}
+.fm-kv{margin-top:22px;display:grid;grid-template-columns:1fr auto;gap:9px 16px;font-size:14px}
+.fm-kv dt{color:#8d89a3}
+.fm-kv dd{text-align:right;font-weight:650;color:#1c1733}
+.fm-kv dd.is-down{color:#e11d48}
+.fm-kv dd.is-closed{color:#b4233c}
+.fm-alert{background:#fff7f4;border:1px solid #ffd7c8;border-radius:18px;padding:14px 16px}
+.fm-alert-top{display:flex;gap:10px;align-items:flex-start}
+.fm-alert-top p{color:#5c4a48;font-size:14px;line-height:1.45}
+.fm-alert .fm-badge{flex:none;margin-top:2px}
+.fm-rest{margin-top:10px;color:#6b5c58;font-size:14px;line-height:1.45}
+.fm-lost{margin-top:10px;padding-top:10px;border-top:1px solid #ffd7c8;color:#9a6700;font-size:14px;line-height:1.45}
+.fm-block{margin-top:22px}
+.fm-block h3{font-size:11px;font-weight:750;letter-spacing:.14em;text-transform:uppercase;color:#8d89a3;margin-bottom:8px}
+.fm-work{padding:12px 0;border-top:1px solid #eceaf3}
+.fm-work-top{display:flex;align-items:baseline;gap:10px}
+.fm-idx{color:#6d5efc;font-weight:750;font-size:13px}
+.fm-work-top b{flex:1;min-width:0;font-size:16px;letter-spacing:-.02em}
+.fm-risk-label{color:#e11d48;font-size:11px;font-weight:750;letter-spacing:.08em;text-transform:uppercase}
+.fm-why{margin-top:6px;font-size:12px;color:#8d89a3}
+.fm-why b{color:#3d3754;font-weight:650}
+.fm-dirs{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.fm-dir{padding-top:8px}
+.fm-dir .k{display:block;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#8d89a3;font-weight:750}
+.fm-ssh-word{display:block;margin-top:4px;font-size:15px}
+.fm-ssh-word.is-connected{color:#176b45}
+.fm-ssh-word.is-stale{color:#9a6700}
+.fm-ssh-word.is-unknown{color:#6b657c}
+.fm-dir .s{display:block;margin-top:4px;font-size:12px;color:#8d89a3;line-height:1.4}
+@media (hover:hover){.fm-node:hover .fm-peek{display:block}}
+@media (max-width:760px){
+.fm{padding:calc(16px + env(safe-area-inset-top)) 16px calc(20px + env(safe-area-inset-bottom))}
+.fm-top{flex-direction:column;align-items:stretch;gap:0}
+.fm-side{align-items:stretch;margin-top:18px}
+.fm-metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.fm-age{grid-column:1 / -1;justify-content:flex-start}
+.fm-metric{text-align:left;min-width:0}
+.fm-metric b{font-size:34px}
+.fm-title{font-size:34px}
+.fm-sub{font-size:18px}
+.fm-stage{height:520px;min-height:520px;margin-top:8px}
+.fm-node{width:112px;transform:translate(-50%,-37px)}
+.fm-drift,.fm-orb{width:74px;height:74px}
+.fm-orb svg{width:36px;height:36px}
+.fm-name{font-size:13px}
+.fm-foot{flex-direction:column;align-items:flex-start}
+.fm-hint-wide{display:none}
+.fm-hint-narrow{display:block}
+.fm-backdrop{background:rgba(28,23,51,.28)}
+.fm-panel{inset:auto 0 0 0;left:0;right:0;width:100%;box-sizing:border-box;max-height:88vh;background:#fff;border-radius:28px 28px 0 0;box-shadow:0 -18px 50px rgba(40,30,80,.16);grid-template-columns:1fr;gap:6px;padding:22px 18px calc(24px + env(safe-area-inset-bottom));margin:0;max-width:none}
+.fm-ident-head{padding-right:40px}
+.fm-kv{width:100%;min-width:0}
+.fm-ident-head{display:flex;align-items:center;gap:14px}
+.fm-ident-orb{width:72px;height:72px;flex:none}
+.fm-ident-orb svg{width:36px;height:36px}
+.fm-ident-name{margin-top:0;font-size:32px}
+.fm-x{top:12px;right:12px;background:#f4f5fb}
+.fm-dirs{grid-template-columns:1fr}
+}
+@media (prefers-reduced-motion:reduce){.fm-drift{animation:none!important}}
 </style>
 </head>
-<body>
+<body class="fleet-light">
+<div class="fm" id="fleet">
+	<header class="fm-top">
+		<div class="fm-lead">
+			<div class="fm-brand">Fleet <span id="fm-pill" class="fm-pill"></span> <span id="fm-link" class="fm-link">Connecting</span></div>
+			<h2 id="fm-title" class="fm-title">Reading the fleet.</h2>
+			<p id="fm-sub" class="fm-sub"></p>
+		</div>
+		<div class="fm-side">
+			<div id="fm-metrics" class="fm-metrics"></div>
+		</div>
+	</header>
+	<div id="fm-banners" class="fm-banners"></div>
+	<div id="fm-stage" class="fm-stage">
+		<div id="fm-lines" class="fm-lines"></div>
+		<div class="fm-hub"><span class="fm-sr">Hub</span><svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="11" r="3.2" fill="#6d5efc"/><circle cx="12" cy="34" r="3.2" fill="#6d5efc"/><circle cx="36" cy="34" r="3.2" fill="#6d5efc"/><path d="M22.2 13.4 14 31.2M25.8 13.4 34 31.2M15.2 34h17.6" fill="none" stroke="#6d5efc" stroke-width="1.6" stroke-linecap="round"/></svg></div>
+		<div id="fm-queue" class="fm-queue-wrap"></div>
+		<div id="fm-nodes" class="fm-nodes"></div>
+	</div>
+	<div class="fm-foot">
+		<div class="fm-legend">
+			<span class="fm-key"><i class="sw sw-dispatch"></i>Dispatching work</span>
+			<span class="fm-key"><i class="sw sw-gone"></i>Gone dark</span>
+			<span class="fm-key"><i class="sw sw-connected"></i>SSH connected</span>
+			<span class="fm-key"><i class="sw sw-stale"></i>SSH stale, not live</span>
+			<span class="fm-key"><i class="sw sw-unknown"></i>SSH unknown</span>
+		</div>
+		<p class="fm-hint fm-hint-wide">Hover to peek. Click to go deeper.</p>
+		<p class="fm-hint fm-hint-narrow">Tap to peek. Tap again to go deeper.</p>
+	</div>
+	<div id="fm-sheet" class="fm-sheet"></div>
+</div>
 <div class="aurora"><i></i><i></i><i></i></div>
 <div class="wrap">
 	<header class="rise">
@@ -321,7 +511,7 @@ footer{text-align:center;font-size:11px;color:var(--dim)}
 (function(){
 	var $=function(id){return document.getElementById(id)};
 	var esc=function(v){return String(v==null?'':v).replace(/[&<>"']/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})};
-	var sig={},open={},folds={},tab=null,lastCheck=0,fails=0,last=null,isLive=false,lastMsg=0,wsOk=false,detailCache={},detailLoad={},detailError={};
+	var sig={},open={},folds={},tab=null,lastCheck=0,fails=0,last=null,isLive=false,lastMsg=0,wsOk=false,detailCache={},detailLoad={},detailError={},fleetSig='',sheetNode=null,peeked=null,sheetDetail={};
 	var OS={darwin:'MAC',win32:'WIN',linux:'LNX'};
 	var PHASE={queued:['warn','Queued'],preparing:['info','Preparing'],dispatching:['info','Dispatching'],active:['info','Running'],
 		approval_required:['warn','Awaiting approval'],completed_unverified:['warn','Execution ended · awaiting supervisor verification'],succeeded:['ok','Verified · deployment separate'],
@@ -579,8 +769,201 @@ footer{text-align:center;font-size:11px;color:var(--dim)}
 		return h;
 	}
 
+	/* Fleet map: draw only fields the state payload already has. Never open SSH, probes, or a second socket. */
+	var MAC='<svg viewBox="0 0 48 48" aria-hidden="true"><rect x="7" y="8" width="34" height="22" rx="3" fill="none" stroke="#2c2848" stroke-width="1.7"/><path d="M18 36h12M24 30v6" fill="none" stroke="#2c2848" stroke-width="1.7" stroke-linecap="round"/></svg>';
+	var WIN='<svg viewBox="0 0 48 48" aria-hidden="true"><path fill="#2c2848" d="M8 10.5 20 8.8v13H8v-11.3zm14-2.2L40 6v15.8H22V8.3zM8 24.2h12V38L8 36.2V24.2zm14 .2H40V42l-18-2.4V24.4z"/></svg>';
+	var TUX='<svg viewBox="0 0 48 48" aria-hidden="true"><ellipse cx="24" cy="27" rx="12" ry="14" fill="#2a2740"/><ellipse cx="24" cy="30" rx="7" ry="8" fill="#fff"/><circle cx="20" cy="22" r="1.4" fill="#fff"/><circle cx="28" cy="22" r="1.4" fill="#fff"/><ellipse cx="24" cy="26.5" rx="2.1" ry="1.3" fill="#f5a524"/><ellipse cx="13.5" cy="30" rx="4" ry="2.2" fill="#2a2740"/><ellipse cx="34.5" cy="30" rx="4" ry="2.2" fill="#2a2740"/><ellipse cx="18" cy="40" rx="4" ry="1.5" fill="#f5a524"/><ellipse cx="30" cy="40" rx="4" ry="1.5" fill="#f5a524"/></svg>';
+	var GENERIC='<svg viewBox="0 0 48 48" aria-hidden="true"><circle cx="24" cy="24" r="8" fill="none" stroke="#2c2848" stroke-width="1.7"/></svg>';
+	var OSNAME={darwin:'macOS',win32:'Windows',linux:'Linux'};
+	var BUBBLE=['#5b6cff','#6d5efc','#0f9f6e','#7c6cf0'];
+	var DRIFT=[[7,-6],[-5,8],[6,5],[-8,-4],[4,-7],[-6,3],[8,2],[-3,7]];
+	var EYES={failed:1,needs_confirmation:1,approval_required:1,unplaceable:1,collect_result:1,verify_result:1};
+	var ATTN={running:'In flight',queued:'Queued',failed:'Failed',needs_confirmation:'At risk',approval_required:'Needs approval',unplaceable:'Unplaceable',collect_result:'Collect result',verify_result:'Verify result',settled:'Settled'};
+	function osIcon(os){if(os==='darwin')return MAC;if(os==='win32')return WIN;if(os==='linux')return TUX;return GENERIC}
+	function osPretty(n){return (OSNAME[n.os]||n.os||'Unknown')+' · '+(n.arch||'unknown')}
+	function num(v){return typeof v==='number'&&isFinite(v)?v:0}
+	function plural(n,word){return n+' '+word+(n===1?'':'s')}
+	function layoutMobile(){if(typeof matchMedia!=='function')return false;try{return matchMedia('(max-width: 760px)').matches}catch(e){return false}}
+	function coarse(){if(typeof matchMedia!=='function')return false;try{return matchMedia('(max-width: 760px)').matches||matchMedia('(pointer: coarse)').matches}catch(e){return false}}
+	function nodeDown(n){if(!n||typeof n.id!=='string')return false;if(n.reachable===false)return true;var p=n.probe;return !!(p&&p.probed&&p.ok===false)}
+	function taskRisk(t){if(!t)return false;if(t.attention)return t.attention==='needs_confirmation';return t.phase==='blocked_unknown'||t.phase==='cancel_unknown'}
+	function taskEyes(t){if(!t)return false;if(t.attention)return !!EYES[t.attention];if(t.phase==='failed'||t.phase==='blocked_unknown'||t.phase==='cancel_unknown'||t.phase==='approval_required'||t.phase==='completed_unverified')return true;return t.phase==='queued'&&!!(t.placement&&t.placement.verdict==='unplaceable')}
+	function tasksFor(d,id){return (d.tasks||[]).filter(function(t){return t&&t.nodeId===id})}
+	function riskCount(d,n){return assigned(d,n).filter(taskRisk).length}
+	function linkFor(d,id){var links=d.sshLinks||[];for(var i=0;i<links.length;i++)if(links[i]&&links[i].nodeId===id)return links[i];return null}
+	function dirStatus(dir){var s=dir&&dir.status;if(s==='observed'||s==='stale')return s;return 'not_checked'}
+	function sshClass(status){if(status==='observed')return 'fm-ssh-connected';if(status==='stale')return 'fm-ssh-stale';return 'fm-ssh-unknown'}
+	function sshWords(status){if(status==='observed')return 'Connected';if(status==='stale')return 'Stale';return 'Unknown'}
+	function sshShort(status){if(status==='observed')return 'Connected';if(status==='stale')return 'Stale, not live';return 'Unknown'}
+	function sshWordClass(status){if(status==='observed')return 'is-connected';if(status==='stale')return 'is-stale';return 'is-unknown'}
+	function points(count,mobile){var start=mobile?-Math.PI/2:-3*Math.PI/4,rx=mobile?33:36,ry=mobile?34:30,out=[];for(var i=0;i<count;i++){var ang=start+i*2*Math.PI/Math.max(count,1);out.push({x:50+Math.cos(ang)*rx,y:50+Math.sin(ang)*ry})}return out}
+	function nfmt(v){return (Math.round(v*100)/100).toFixed(2)}
+	function shorten(x1,y1,x2,y2,a,b){var dx=x2-x1,dy=y2-y1,len=Math.sqrt(dx*dx+dy*dy)||1;if(a+b>len*0.62){var scale=len*0.62/(a+b);a*=scale;b*=scale}return {x1:x1+dx/len*a,y1:y1+dy/len*a,x2:x2-dx/len*b,y2:y2-dy/len*b}}
+	function arc(x1,y1,x2,y2,bend){var mx=(x1+x2)/2,my=(y1+y2)/2,dx=x2-x1,dy=y2-y1,len=Math.sqrt(dx*dx+dy*dy)||1,cx=mx+(-dy/len)*bend,cy=my+(dx/len)*bend;return {d:'M'+nfmt(x1)+' '+nfmt(y1)+' Q '+nfmt(cx)+' '+nfmt(cy)+' '+nfmt(x2)+' '+nfmt(y2),cx:cx,cy:cy,x1:x1,y1:y1,x2:x2,y2:y2}}
+	function qMid(a){var t=0.55,u=1-t;return {x:u*u*a.x1+2*u*t*a.cx+t*t*a.x2,y:u*u*a.y1+2*u*t*a.cy+t*t*a.y2}}
+	function stageSize(){var el=$('fm-stage'),w=1000,h=560;if(el&&typeof el.getBoundingClientRect==='function'){var r=el.getBoundingClientRect();if(r&&r.width>80&&r.height>80){w=r.width;h=r.height}}return {w:Math.round(w),h:Math.round(h)}}
+	function drawLine(mark,attrs,bend,xPct,yPct,size){var narrow=size.w<760,hubTrim=narrow?46:64,nodeTrim=narrow?34:50,bow=narrow?bend*0.45:bend,x2=xPct/100*size.w,y2=yPct/100*size.h,s=shorten(size.w/2,size.h/2,x2,y2,hubTrim,nodeTrim),a=arc(s.x1,s.y1,s.x2,s.y2,bow),p=qMid(a);return '<path class="fm-line '+mark+'" '+attrs+' d="'+a.d+'"/>'+'<circle class="fm-dot '+mark+'" cx="'+nfmt(p.x)+'" cy="'+nfmt(p.y)+'" r="3.2"/>'}
+	function attentionLabel(t){if(t.attention&&ATTN[t.attention])return ATTN[t.attention];if(taskRisk(t))return 'At risk';if(t.phase==='active'||t.phase==='preparing'||t.phase==='dispatching')return 'In flight';if(t.phase==='queued')return 'Queued';return 'Task'}
+	function workName(t){if(t.title)return String(t.title);if(t.key)return String(t.key);return 'Held work'}
+	function lostCopy(t){var name=t.key||t.title;if(!name)return 'A task on this node stays held. Its outcome is unknown, so it stays held for you. Nothing is re-sent or re-placed.';return String(name)+' stays held. Its outcome is unknown, so it stays held for you. Nothing is re-sent or re-placed.'}
+	function taskReason(t){if(t.selection&&t.selection.reason)return t.selection.reason;var extra=t.id&&sheetDetail[t.id];return extra&&extra.reason}
+	function whyBits(t){var bits=[];if(t.required&&typeof t.required.nodeId==='string'&&t.required.nodeId)bits.push('Input names '+t.required.nodeId);var reason=taskReason(t);if(reason)bits.push(reasonLabel(reason));return bits}
+	function assigned(d,n){var tasks=tasksFor(d,n.id).slice(),seen={};tasks.forEach(function(t){if(t.id)seen[t.id]=1});(n.holding||[]).forEach(function(h){if(!h||(h.id&&seen[h.id]))return;tasks.push(h)});(n.possiblyRunning||[]).forEach(function(h){if(!h||(h.id&&seen[h.id]))return;tasks.push({id:h.id,key:h.key,phase:'active',held:false,possibly:true})});return tasks}
+	function probeStamp(n){var p=n.probe;if(!p||p.probed!==true||p.ok!==false||typeof p.checkedAt!=='string'||!p.checkedAt)return NaN;var ms=Date.parse(p.checkedAt);return isNaN(ms)?NaN:ms}
+	function spanAge(ms){var s=Math.max(0,Math.round((Date.now()-ms)/1000));if(s<60)return s+'s';var m=Math.floor(s/60);if(m<60)return m+' min';var h=Math.floor(m/60);if(h<48)return h+' h';return Math.floor(h/24)+' d'}
+	function clock(sec){sec=Math.max(0,Math.round(sec));var m=Math.floor(sec/60),s=sec%60;return m+':'+(s<10?'0':'')+s}
+	function leaseNums(d){var lease=d&&d.hubLease;if(!lease||typeof lease.remainingSeconds!=='number'||!isFinite(lease.remainingSeconds))return null;return lease}
+	function headline(nodes,downCount,flying){var up=nodes.length-downCount;if(!nodes.length)return {pill:'Empty',mode:'',title:'No nodes registered.',sub:'Nodes appear here when the hub has them.'};if(downCount&&(up>0||flying>0))return {pill:'Degraded',mode:'',title:'Degraded, <em>still running.</em>',sub:'<em>'+plural(flying,'task')+' in flight</em>, '+plural(downCount,'node')+' down'};if(downCount)return {pill:'Unreachable',mode:'bad',title:'Nodes unreachable.',sub:plural(downCount,'node')+' not answering'};return {pill:'Running',mode:'ok',title:'Fleet running.',sub:'<em>'+plural(flying,'task')+' in flight</em>'}}
+	function fleetKey(d){var mobile=layoutMobile(),box=stageSize();var nodes=(d.nodes||[]).map(function(n){return [n&&n.id,n&&n.os,n&&n.arch,n&&n.reachable,n&&n.enabled,n&&n.draining,n&&n.currentLoad,n&&n.heldNotRunning,n&&n.probe&&[n.probe.ok,n.probe.probed],n&&n.succeeded,n&&n.troubled,n&&n.assignedTotal]});var tasks=(d.tasks||[]).map(function(t){return [t&&t.id,t&&t.nodeId,t&&t.phase,t&&t.attention,t&&t.key,t&&t.title,t&&t.held,t&&t.selection&&t.selection.reason,t&&t.required&&t.required.nodeId]});var links=(d.sshLinks||[]).map(function(x){return [x&&x.nodeId,x&&x.hubToNode&&x.hubToNode.status,x&&x.nodeToHub&&x.nodeToHub.status]});var lease=leaseNums(d);return JSON.stringify({nodes:nodes,tasks:tasks,links:links,active:d.summary&&d.summary.activeTasks,queued:d.summary&&d.summary.queuedTasks,lease:lease&&[lease.remainingSeconds,lease.renewedSecondsAgo],age:typeof d.healthDataAgeSeconds==='number'?d.healthDataAgeSeconds:null,peek:peeked,mobile:mobile,box:box})}
+	function paintFleet(d){
+		var nodes=(d.nodes||[]).filter(function(n){return n&&typeof n.id==='string'&&n.id});
+		var summary=d.summary||{};
+		var flying=num(summary.activeTasks),queued=num(summary.queuedTasks);
+		var downCount=nodes.filter(nodeDown).length;
+		var head=headline(nodes,downCount,flying);
+		var eyes=(d.tasks||[]).filter(taskEyes).length;
+		var pill=$('fm-pill');pill.className='fm-pill'+(head.mode?' is-'+head.mode:'');pill.innerHTML='<i></i><span>'+esc(head.pill)+'</span>';
+		$('fm-title').innerHTML=head.title;
+		$('fm-sub').innerHTML=head.sub;
+		var metrics='<div class="fm-metric"><span class="k">In flight</span><b>'+flying+'</b></div>'+'<div class="fm-metric"><span class="k">Queued</span><b>'+queued+'</b></div>'+'<div class="fm-metric'+(eyes>0?' is-alert':'')+'"><span class="k">Needs eyes</span><b>'+eyes+'</b></div>';
+		if(typeof d.healthDataAgeSeconds==='number'&&isFinite(d.healthDataAgeSeconds))metrics+='<div class="fm-age"><i></i>Health data stale <b>'+Math.max(0,Math.round(d.healthDataAgeSeconds))+'s old</b></div>';
+		$('fm-metrics').innerHTML=metrics;
+		var banners='',lease=leaseNums(d);
+		if(lease){var renewed=typeof lease.renewedSecondsAgo==='number'&&isFinite(lease.renewedSecondsAgo)?'Renewed '+Math.max(0,Math.round(lease.renewedSecondsAgo))+'s ago. ':'';banners='<div class="fm-lease"><div><b>Hub lease expiring</b><p>'+esc(renewed)+'A standby can take over once it lapses.</p></div><div class="fm-clock">'+clock(lease.remainingSeconds)+'</div></div>'}
+		$('fm-banners').innerHTML=banners;
+		$('fm-queue').innerHTML=queued>0?'<span class="fm-queue">Queue · '+queued+' waiting</span>':'';
+		var mobile=layoutMobile(),pts=points(nodes.length,mobile),size=stageSize(),svg='<svg viewBox="0 0 '+size.w+' '+size.h+'" width="100%" height="100%" preserveAspectRatio="none">',html='';
+		nodes.forEach(function(n,i){
+			var pt=pts[i],down=nodeDown(n),risk=riskCount(d,n),load=typeof n.currentLoad==='number'?n.currentLoad:0;
+			var link=linkFor(d,n.id),outS=link?dirStatus(link.hubToNode):'not_checked',inS=link?dirStatus(link.nodeToHub):'not_checked';
+			var bubble=down&&risk>0?risk:load,drift=DRIFT[i%DRIFT.length];
+			if(load>0)svg+=drawLine('fm-dispatch','data-kind="dispatch" data-link="'+esc(n.id)+'"',28,pt.x,pt.y,size);
+			if(down)svg+=drawLine('fm-gone','data-kind="gone" data-link="'+esc(n.id)+'"',-28,pt.x,pt.y,size);
+			if(link){
+				svg+=drawLine(sshClass(outS),'data-kind="ssh" data-dir="hub-to-node" data-link="'+esc(n.id)+'" data-status="'+outS+'"',12,pt.x,pt.y,size);
+				svg+=drawLine(sshClass(inS),'data-kind="ssh" data-dir="node-to-hub" data-link="'+esc(n.id)+'" data-status="'+inS+'"',-12,pt.x,pt.y,size);
+			}
+			var count=bubble>0?'<span class="fm-count'+(down&&risk>0?' is-risk':'')+'"'+(down&&risk>0?'':' style="background:'+BUBBLE[i%BUBBLE.length]+'"')+'>'+bubble+'</span>':'';
+			var badges='';
+			if(down)badges+='<span class="fm-badge down">Down · unreachable</span>';
+			else if(n.enabled===false)badges+='<span class="fm-badge quiet">Disabled</span>';
+			else if(n.draining)badges+='<span class="fm-badge quiet">Draining</span>';
+			if(risk>0)badges+='<span class="fm-badge risk">'+risk+' task'+(risk===1?'':'s')+' at risk</span>';
+			html+='<div class="fm-node'+(down?' is-down':' is-up')+(peeked===n.id?' is-peek':'')+'" data-node="'+esc(n.id)+'" data-down="'+(down?'1':'0')+'" data-inflight="'+load+'" style="left:'+nfmt(pt.x)+'%;top:'+nfmt(pt.y)+'%">'+
+				'<div class="fm-peek"><b>'+esc(n.id)+'</b><span>'+esc(osPretty(n))+'</span><span>SSH out · '+esc(sshShort(outS))+'</span><span>SSH in · '+esc(sshShort(inS))+'</span><span>'+load+' running</span></div>'+
+				'<div class="fm-drift" style="--dx:'+drift[0]+'px;--dy:'+drift[1]+'px;--delay:'+(-i*2.4)+'s"><button type="button" class="fm-orb" aria-label="Open '+esc(n.id)+'">'+osIcon(n.os)+'</button>'+count+'</div>'+
+				'<div class="fm-name">'+esc(n.id)+'</div><div class="fm-os">'+esc(osPretty(n))+'</div>'+(badges?'<div class="fm-badges">'+badges+'</div>':'')+'</div>';
+		});
+		svg+='</svg>';
+		$('fm-lines').innerHTML=nodes.length?svg:'';
+		$('fm-nodes').innerHTML=html||'<p class="fm-os" style="position:absolute;left:50%;top:68%;transform:translateX(-50%)">No nodes registered</p>';
+	}
+	function sshDetail(dir,status,inbound,down){
+		var bits=[];
+		if(status==='not_checked')bits.push('Not checked');
+		if(status==='stale')bits.push('Not a live connection');
+		if(status==='observed')bits.push(inbound?'Fresh node-to-hub observation':'Fresh hub-to-node observation');
+		if(inbound&&status!=='observed')bits.push('No reverse SSH is claimed');
+		if(down&&status!=='observed')bits.push('Node is dark, no probe');
+		if(dir&&typeof dir.checkedAt==='string'&&dir.checkedAt){var ms=Date.parse(dir.checkedAt);if(!isNaN(ms))bits.push('Checked '+ago(ms))}
+		return bits.join('. ');
+	}
+	function kvRow(label,value,cls){return '<dt>'+esc(label)+'</dt><dd'+(cls?' class="'+cls+'"':'')+'>'+esc(value)+'</dd>'}
+	function newWork(n){if(!n.admission)return '';if(n.admission.open)return 'Open';var reasons=(n.admission.reasons||[]).map(reasonLabel);if(n.reachable===false||reasons.indexOf('Unreachable')!==-1)return 'Closed, unreachable';return reasons.length?'Closed, '+reasons.join(', '):'Closed'}
+	function healthLine(n,down){if(down)return 'Down, unreachable';if(n.health&&n.health.stable===true)return 'Stable';if(n.health&&n.health.stable===false)return 'Unstable';if(n.probe&&n.probe.ok)return 'Responding';if(n.probe&&n.probe.probed===false)return 'Not sampled';return 'No probe yet'}
+	function readyLine(n){if(n.sdkReady&&n.modelReady)return 'Ready';if(n.sdkReady===false&&n.modelReady===false)return 'Not ready';if(n.sdkReady===false)return 'SDK not ready';if(n.modelReady===false)return 'Model not ready';return ''}
+	function sheetHtml(d,n){
+		var down=nodeDown(n),risk=riskCount(d,n),load=typeof n.currentLoad==='number'?n.currentLoad:0;
+		var link=linkFor(d,n.id),outDir=link&&link.hubToNode,inDir=link&&link.nodeToHub,outS=link?dirStatus(outDir):'not_checked',inS=link?dirStatus(inDir):'not_checked';
+		var bubble=down&&risk>0?risk:load;
+		var stamp=probeStamp(n);
+		var status=down?(isNaN(stamp)?'Down, no probe has answered':'Down, last check '+ago(stamp)):osPretty(n);
+		var rows=kvRow('OS',osPretty(n));
+		if(typeof n.currentLoad==='number')rows+=kvRow('Running',String(n.currentLoad));
+		if(typeof n.heldNotRunning==='number')rows+=kvRow('Held',String(n.heldNotRunning));
+		var ready=readyLine(n);if(ready)rows+=kvRow('SDK / model',ready);
+		var work=newWork(n);if(work)rows+=kvRow('New work',work,work.indexOf('Closed')===0?'is-closed':'');
+		rows+=kvRow('Health',healthLine(n,down),down?'is-down':'');
+		rows+=kvRow('Tasks at risk',String(risk),risk>0?'is-down':'');
+		if(typeof n.assignedTotal==='number')rows+=kvRow('Lifetime tasks',String(n.assignedTotal));
+		if(typeof n.succeeded==='number'&&typeof n.troubled==='number')rows+=kvRow('Wins / trouble',n.succeeded+' / '+n.troubled);
+		if(n.enabled===false)rows+=kvRow('Node','Disabled');
+		else if(n.draining)rows+=kvRow('Node','Draining');
+		var alert='';
+		if(down){
+			var lead=isNaN(stamp)?'Unreachable. No probe has answered.':'Unreachable for '+spanAge(stamp)+'. No probe has answered since.';
+			var others=(d.nodes||[]).filter(function(o){return o&&o.id!==n.id});
+			var othersBusy=others.some(function(o){return (o.currentLoad||0)>0});
+			var othersUp=others.some(function(o){return !nodeDown(o)});
+			var rest=othersBusy?'The rest of the fleet keeps working and new tasks avoid this node.':othersUp?'The rest of the fleet stays up and new tasks avoid this node.':'';
+			var lost=assigned(d,n).filter(taskRisk).map(function(t){return '<p class="fm-lost">'+esc(lostCopy(t))+'</p>'}).join('');
+			alert='<div class="fm-alert"><div class="fm-alert-top"><span class="fm-badge down">Down</span><p>'+esc(lead)+'</p></div>'+(rest?'<p class="fm-rest">'+esc(rest)+'</p>':'')+lost+'</div>';
+		}
+		var works=assigned(d,n).map(function(t,i){
+			var bits=whyBits(t),riskRow=taskRisk(t);
+			var why=bits.length?'<p class="fm-why">Why here</p><p class="fm-why"><b>'+esc(bits.join(' · '))+'</b></p>':'';
+			var tag=t.possibly?'Possibly still running':attentionLabel(t);
+			return '<article class="fm-work"><div class="fm-work-top"><span class="fm-idx">'+String(i+1).padStart(2,'0')+'</span><b>'+esc(workName(t))+'</b>'+(riskRow?'<span class="fm-risk-label">At risk</span>':'<span class="fm-why">'+esc(tag)+'</span>')+'</div>'+why+'</article>';
+		}).join('');
+		var workBlock=works?'<div class="fm-block"><h3>Assigned work · '+assigned(d,n).length+'</h3>'+works+'</div>':'<div class="fm-block"><h3>Assigned work · 0</h3><p class="fm-why">Nothing is assigned on this node.</p></div>';
+		var ssh='<div class="fm-block"><h3>SSH with the hub</h3><div class="fm-dirs">'+
+			'<div class="fm-dir" data-ssh-out="'+outS+'"><span class="k">Hub to node</span><b class="fm-ssh-word '+sshWordClass(outS)+'">'+sshWords(outS)+'</b><span class="s">'+esc(sshDetail(outDir,outS,false,down))+'</span></div>'+
+			'<div class="fm-dir" data-ssh-in="'+inS+'"><span class="k">Node to hub</span><b class="fm-ssh-word '+sshWordClass(inS)+'">'+sshWords(inS)+'</b><span class="s">'+esc(sshDetail(inDir,inS,true,down))+'</span></div>'+
+			'</div></div>';
+		var count=bubble>0?'<span class="fm-count'+(down&&risk>0?' is-risk':'')+'">'+bubble+'</span>':'';
+		return '<div class="fm-backdrop" data-close="1"></div>'+
+			'<div class="fm-panel" role="dialog" aria-modal="true" aria-label="'+esc(n.id)+'">'+
+			'<button type="button" class="fm-x" data-close="1" aria-label="Close">×</button>'+
+			'<div class="fm-ident"><div class="fm-ident-head"><div class="fm-ident-orb'+(down?' is-down':'')+'">'+osIcon(n.os)+count+'</div><div><div class="fm-ident-name">'+esc(n.id)+'</div><div class="fm-ident-status'+(down?' is-down':'')+'">'+esc(status)+'</div></div></div><dl class="fm-kv">'+rows+'</dl></div>'+
+			'<div class="fm-sheet-main">'+alert+workBlock+ssh+'</div></div>';
+	}
+	function paintSheet(d){
+		var n=null,nodes=d.nodes||[];
+		if(sheetNode){for(var i=0;i<nodes.length;i++)if(nodes[i]&&nodes[i].id===sheetNode)n=nodes[i];if(!n)sheetNode=null}
+		var html=n?sheetHtml(d,n):'';
+		var el=$('fm-sheet'),cls='fm-sheet'+(n?' is-open':'');
+		if(el.__html===html&&el.className===cls)return;
+		el.__html=html;el.className=cls;el.innerHTML=html;
+	}
+	function renderFleet(d){
+		if(!d)return;
+		var key=fleetKey(d);
+		if(fleetSig!==key){fleetSig=key;paintFleet(d)}
+		var stage=$('fm-stage');if(stage)stage.className='fm-stage'+(sheetNode?' is-paused':'');
+		paintSheet(d);
+	}
+	function loadSheetReasons(id){
+		if(!last)return;
+		tasksFor(last,id).forEach(function(t){
+			if(!t.id||(t.selection&&t.selection.reason)||sheetDetail[t.id])return;
+			fetch('/api/task/'+encodeURIComponent(t.id),{cache:'no-store'}).then(function(r){if(!r.ok)return null;return r.json()}).then(function(detail){
+				if(!detail||!detail.selection)return;
+				sheetDetail[t.id]=detail.selection;
+				if(last&&sheetNode===id)paintSheet(last);
+			}).catch(function(){});
+		});
+	}
+	function onFleetNode(e){
+		var t=e.target,el=t&&t.closest?t.closest('[data-node]'):null;
+		if(!el)return;
+		var id=el.getAttribute('data-node');
+		if(!id||!last)return;
+		if(coarse()){if(peeked!==id){peeked=id;sheetNode=null;renderFleet(last);return}}
+		peeked=null;sheetNode=id;renderFleet(last);loadSheetReasons(id);
+	}
+	function onFleetSheet(e){
+		var t=e.target;
+		if(!t||!t.closest||!t.closest('[data-close]'))return;
+		sheetNode=null;peeked=null;if(last)renderFleet(last);
+	}
+	function fleetLive(ok){var el=$('fm-link');if(!el)return;el.className='fm-link '+(ok?'is-live':'is-down');el.textContent=ok?'Live':'Disconnected'}
+	var fleetNodeRoot=$('fm-nodes'),fleetSheetRoot=$('fm-sheet');
+	if(fleetNodeRoot&&fleetNodeRoot.addEventListener)fleetNodeRoot.addEventListener('click',onFleetNode);
+	if(fleetSheetRoot&&fleetSheetRoot.addEventListener)fleetSheetRoot.addEventListener('click',onFleetSheet);
+
 	function render(d){
 		last=d;isLive=!!d.live;
+		renderFleet(d);
 		var g=d.gjcRuntime||{},s=d.summary;
 		$('rt-ver').textContent=g.installed?(g.version||'Installed'):(g.lastCheckedAt&&sig.rt?'Not installed':'Checking');sig.rt=1;
 		lastCheck=g.installed&&g.lastCheckedAt?Date.parse(g.lastCheckedAt):0;
@@ -639,8 +1022,9 @@ footer{text-align:center;font-size:11px;color:var(--dim)}
 	function alive(){
 		fails=0;lastMsg=Date.now();document.body.classList.remove('stale');$('live').classList.remove('down');
 		$('clock').textContent=new Date().toTimeString().slice(0,8);
+		fleetLive(true);
 	}
-	function down(){document.body.classList.add('stale');$('live').classList.add('down');$('clock').textContent='Disconnected'}
+	function down(){document.body.classList.add('stale');$('live').classList.add('down');$('clock').textContent='Disconnected';fleetLive(false)}
 	function poll(){
 		fetch('/api/state',{cache:'no-store'}).then(function(r){if(!r.ok)throw new Error(r.status);return r.json()}).then(function(d){
 			alive();render(d);
