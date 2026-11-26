@@ -1671,6 +1671,19 @@ export function dashboardWsOriginAllowed(req: Request, bindHostname: string): bo
 	return parsed.protocol === new URL(req.url).protocol;
 }
 
+/** Whole-state freshness transitions must be visible even when another node is still streaming. */
+export function dashboardPushKey(state: DashboardState): string {
+	const { generatedAt: _generatedAt, ...rest } = state;
+	return JSON.stringify({
+		...rest,
+		// Measurements and timestamps use the separate resources payload. Keep only the stable
+		// availability class here so a silent stream aging out triggers one full-state update.
+		nodes: rest.nodes.map(({ resources, ...node }) => ({
+			...node, resourceAvailable: resources?.ok ?? null,
+		})),
+	});
+}
+
 export function startDashboardServer(
 	store: FleetStore,
 	port = 8080,
@@ -1737,20 +1750,13 @@ export function startDashboardServer(
 	// A read-only view (ui --read-only) only displays; it never probes or records.
 	if (live && health && !health.readOnly) healthTimer = setTimeout(observeHealth, 0);
 	const snapshot = () => getDashboardState(store, runtime(), probes(), streams ? (nodeId) => streams.latest(nodeId) : undefined, health, streams?.sshEvidence);
-	const pushKey = (state: DashboardState) => {
-		// generatedAt alone must not force a republish. Per-node resource samples are left out too: they already
-		// reach browsers on their own channel (the {type:"resources"} message), and their sampledAt changes every
-		// 2 s, which republished the whole state on every tick.
-		const { generatedAt: _generatedAt, ...rest } = state;
-		return JSON.stringify({ ...rest, nodes: rest.nodes.map(({ resources: _resources, ...node }) => node) });
-	};
 	// Push the full state to connected browsers when it changes; nothing runs while nobody is watching.
 	// Unchanged snapshots are not republished every SAMPLE_MS (avoids busy idle hubs).
 	let lastPushKey: string | undefined;
 	const pushTick = () => {
 		if (!server || server.subscriberCount(TOPIC) <= 0) return;
 		const state = snapshot();
-		const key = pushKey(state);
+		const key = dashboardPushKey(state);
 		if (key === lastPushKey) return;
 		lastPushKey = key;
 		server.publish(TOPIC, JSON.stringify({ type: "state", state }));
@@ -1809,7 +1815,7 @@ export function startDashboardServer(
 				const firstSubscriber = server.subscriberCount(TOPIC) === 0;
 				ws.subscribe(TOPIC);
 				const state = snapshot();
-				if (firstSubscriber) lastPushKey = pushKey(state);
+				if (firstSubscriber) lastPushKey = dashboardPushKey(state);
 				ws.send(JSON.stringify({ type: "state", state }));
 			},
 			// View-only channel: inbound messages are ignored.
