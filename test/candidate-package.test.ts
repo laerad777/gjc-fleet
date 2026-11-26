@@ -216,7 +216,8 @@ test("N2: a 233-byte path whose last-'/' prefix exceeds 155 bytes is packaged, v
 		const names = ["a.txt", rel, max];
 		expect(f.manifest().files.map((x: any) => x.path)).toEqual(names);
 		expect((await verifyCandidate(f.out(), f.out() + ".manifest.json", digest, names)).files).toBe(3);
-		const listed = Bun.spawnSync(["tar", "-tzf", f.out()]);
+		// External tar reads the archive by filename from its own directory, so the check runs on Windows too (no absolute-path quirks).
+		const listed = Bun.spawnSync(["tar", "-tzf", basename(f.out())], { cwd: dirname(f.out()) });
 		expect(listed.exitCode).toBe(0);
 		expect(listed.stdout.toString().split(/\r?\n/).filter(Boolean)).toEqual([MANIFEST_MEMBER, "a.txt", rel, max]);
 		// Two valid splits (prefix 121/name 20 is canonical): the member re-split at prefix 60/name 81 is refused.

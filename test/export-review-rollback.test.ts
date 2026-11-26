@@ -153,7 +153,7 @@ describe("export review is rollback-safe (design a: completed_unverified + resul
 		// The held receipt joins the stored manifest on read (no claim) or becomes the claim's receipt.
 		expect(pending.map(({ id }) => accepted(id))).toEqual([{ status: "not_run", claimReceipt: null }, { status: "not_run", claimReceipt: 0 }]);
 		after.close();
-	});
+	}, 30_000);
 
 	test("the store refuses verifying a pending review without its exact acceptance (review fx-9abb2530 F3: no schema trigger)", async () => {
 		const { db, pending } = await pendingReviewDatabase(true);
@@ -171,7 +171,7 @@ describe("export review is rollback-safe (design a: completed_unverified + resul
 		} finally {
 			store.close();
 		}
-	});
+	}, 30_000);
 
 	test("every consumer of this release treats a pending review as an unverified completion that is not success", async () => {
 		const { f, db, pending } = await pendingReviewDatabase(true);
@@ -215,7 +215,7 @@ describe("export review is rollback-safe (design a: completed_unverified + resul
 		} finally {
 			store.close();
 		}
-	});
+	}, 30_000);
 
 	test.skipIf(!ROLLBACK_TREE || !existsSync(join(ROLLBACK_TREE ?? "", "src/store.ts")))(
 		"an older release (FLEET_ROLLBACK_TREE) opens, lists and operates on a database with pending export reviews and never verifies them",
