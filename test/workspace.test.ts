@@ -384,8 +384,8 @@ describe("real task-owned Git workspaces (not live GJC proof)", () => {
 			prepareWorkspace({ ...f.input, attemptId: "local-filter" }),
 		).rejects.toThrow("checkout_filters_not_authorized");
 	});
-	test("review fx-093cc54b F2: a preparation refusal returns only after its Git reads exited (the repository can be removed at once)", async () => {
-		for (let round = 0; round < 3; round++) {
+	for (const round of [1, 2, 3]) {
+		test(`review fx-093cc54b F2: a preparation refusal returns only after its Git reads exited (the repository can be removed at once) [round ${round}]`, async () => {
 			const filtered = await fixture();
 			await filtered.git("config", "--local", "filter.local.smudge", "must-not-execute");
 			await expect(prepareWorkspace(filtered.input)).rejects.toThrow("checkout_filters_not_authorized");
@@ -397,8 +397,8 @@ describe("real task-owned Git workspaces (not live GJC proof)", () => {
 			await expect(prepareWorkspace({ ...nested.input, repo: join(nested.repo, "sub") })).rejects.toThrow("repository_root_required");
 			await rm(nested.repo, { recursive: true, force: true });
 			await expect(access(nested.repo)).rejects.toThrow();
-		}
-	});
+		});
+	}
 	test.skipIf(process.platform === "win32")(
 		"a task-created FIFO is refused instead of blocking the synchronous reader (POSIX FIFO cannot exist in a Windows disk worktree)",
 		async () => {

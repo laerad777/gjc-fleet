@@ -19,7 +19,7 @@
 		"typecheck:test": "tsc --noEmit -p tsconfig.test.json",
 		"verify": "bun scripts/verify.ts",
 		"license:check": "bun scripts/license-check.ts",
-		"build": "bun build src/index.ts src/cli.ts src/node.ts src/source-transfer.ts --target=bun --outdir=.local/build",
+		"build": "bun build src/index.ts src/cli.ts src/source-transfer.ts --target=bun --outdir=.local/build --define __GJC_FLEET_SKIP_EMBEDDED_NODE_ENTRY__:true && bun build src/node.ts --target=bun --outdir=.local/build",
 		"fleet": "bun src/cli.ts"
 	},
 	"devDependencies": {

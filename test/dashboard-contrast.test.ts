@@ -44,38 +44,20 @@ function contrast(a: RGB, b: RGB): number {
 const base = rgb(tokens["--bg"]);
 const surfaces = [base, composite(tokens["--panel"], base), composite(tokens["--panel-hi"], base)];
 
-describe("rendered dark dashboard contrast", () => {
-	test("small secondary text meets 4.5:1 on dark surfaces and individual aurora peaks", () => {
-		// Model each glow at full declared opacity plus a hovered card and nested chip.
-		// This is not a browser/compositor audit of overlapping, blurred animations.
-		const glowOpacity = rule(".aurora i").opacity;
-		const glowSurfaces = [1, 2, 3].map((index) => {
-			const glow = rule(`.aurora i:nth-child(${index})`);
-			const color = rgb(glow.background);
-			const opacity = glow.opacity ?? glowOpacity;
-			return composite(`rgba(${color.join(",")},${opacity})`, base);
-		});
-		const nested = [...surfaces, ...glowSurfaces].map((surface) =>
-			composite(rule(".chip").background, composite(tokens["--panel-hi"], surface)),
-		);
+describe("rendered light dashboard contrast", () => {
+	test("small secondary text meets 4.5:1 on light surfaces and nested chips", () => {
+		const nested = surfaces.map((surface) => composite(rule(".chip").background, composite(tokens["--panel-hi"], surface)));
 		for (const token of ["--text", "--sub", "--dim"]) {
 			for (const surface of [...surfaces, ...nested]) {
 				expect(contrast(rgb(tokens[token]), surface), `${token} on ${surface}`).toBeGreaterThanOrEqual(4.5);
 			}
 		}
-		const primary = luminance(rgb(tokens["--text"]));
-		const secondary = luminance(rgb(tokens["--sub"]));
-		const dim = luminance(rgb(tokens["--dim"]));
-		expect(primary - secondary).toBeGreaterThan(0.1);
-		expect(secondary - dim).toBeGreaterThan(0.07);
+		expect(luminance(rgb(tokens["--sub"])) - luminance(rgb(tokens["--text"]))).toBeGreaterThan(0.03);
 	});
 
 	test("metadata, empty states and small labels use the readable dim tier", () => {
 		for (const selector of [".rt-age", ".count", ".empty", "footer", ".note", ".st .r", ".steplabels", ".kv dt", ".tl time", ".stats small", ".meta", ".tabs button small", ".ss-age", ".ss-title.none", ".res-row label small", ".res-row span small"]) {
 			expect(rule(selector).color, selector).toBe("var(--dim)");
-		}
-		for (const selector of [".tagline", ".eyebrow", ".tk-sub", ".ss-sub", ".res-row label"]) {
-			expect(rule(selector).color, selector).toBe("var(--sub)");
 		}
 	});
 
@@ -90,37 +72,27 @@ describe("rendered dark dashboard contrast", () => {
 			}
 		}
 		expect(new Set(statusColors.map((color) => color.join(","))).size).toBe(4);
-		for (const surface of surfaces) expect(contrast(rgb(tokens["--violet"]), surface)).toBeGreaterThanOrEqual(4.5);
-		expect(rule(".live.down").color).toBe("var(--rose)");
 	});
 
 	test("zero-count badges and stale data never fade text as a group", () => {
 		const muted = rule(".chip.mute");
 		expect(muted.opacity).toBe("1");
 		expect(muted.color).toBe("var(--dim)");
-		expect(muted["border-color"]).toBe("var(--line)");
 		for (const surface of surfaces) expect(contrast(rgb(muted.color), composite(muted.background, surface))).toBeGreaterThanOrEqual(4.5);
 		expect(rule(".stale main").opacity).toBe("1");
 		expect(rule(".stale main").filter).toBe("saturate(.4)");
 	});
 
-	test("selected tab counters keep dark readable ink on both gradient ends", () => {
-		const selected = rule(".tabs button.sel");
-		const counter = rgb(rule(".tabs button.sel small").color);
-		for (const variable of selected.background.matchAll(/var\((--[\w-]+)\)/g)) {
-			expect(contrast(counter, rgb(tokens[variable[1]]))).toBeGreaterThanOrEqual(4.5);
-		}
-		expect(selected.background).toContain("var(--mint),var(--sky)");
-	});
-
-	test("the emitted page retains responsive layout, motion and task expansion contracts", () => {
-		expect(html).toContain('<meta name="theme-color" content="#07080c">');
+	test("the emitted page is the English light theme and keeps layout and task expansion contracts", () => {
+		expect(html).toContain('<html lang="en"');
+		expect(html).toContain('<meta name="theme-color" content="#f7f8fe">');
 		expect(rule(".wrap")["max-width"]).toBe("960px");
 		expect(rule(".steps")["grid-template-columns"]).toBe("repeat(7,1fr)");
 		expect(rule(".tk.open .more")["grid-template-rows"]).toBe("1fr");
 		expect(rule(".rise").animation).toBe("rise .7s var(--ease) forwards");
-		expect(rule(".aurora i:nth-child(1)").animation).toBe("drift1 22s ease-in-out infinite alternate");
 		expect(css).toContain("@media(prefers-reduced-motion:reduce)");
 		expect(css).toContain("@media(min-width:680px)");
+		expect(css).toContain("@media(max-width:700px)");
+		for (const hook of ["balloon", "node-badge", "sheet", "headline", "pill-"]) expect(html).toContain(`data-testid="${hook}`);
 	});
 });

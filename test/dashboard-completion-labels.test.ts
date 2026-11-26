@@ -35,6 +35,17 @@ class Element {
 	addEventListener(name: string, handler: (event: any) => void) {
 		this.listeners.set(name, handler);
 	}
+	style: any = { setProperty() {} };
+	attrs = new Map<string, string>();
+	setAttribute(name: string, value: string) { this.attrs.set(name, value); }
+	getAttribute(name: string) { return this.attrs.get(name) ?? null; }
+	removeAttribute(name: string) { this.attrs.delete(name); }
+	querySelector() { return null; }
+	querySelectorAll() { return []; }
+	appendChild(child: unknown) { return child; }
+	remove() {}
+	closest() { return null; }
+	getBoundingClientRect() { return { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 }; }
 }
 
 async function select(html: string, selector: string) {
@@ -68,14 +79,18 @@ async function page(initial: DashboardState) {
 	runInNewContext(script, {
 		document: {
 			getElementById: (id: string) => {
-				const element = elements.get(id);
-				if (!element) throw new Error(`Missing page element ${id}`);
+				// Map nodes and spokes are created by the script itself, so unknown ids are tolerated.
+				let element = elements.get(id);
+				if (!element) { element = new Element(); elements.set(id, element); }
 				return element;
 			},
 			body: new Element(),
+			documentElement: new Element(),
+			addEventListener: () => {},
+			createElement: () => new Element(),
 			querySelector: (selector: string) => {
-				if (selector !== "main") throw new Error(`Unexpected selector ${selector}`);
-				return main;
+				if (selector === "main") return main;
+				return new Element();
 			},
 			// Resource meter patching is outside these label tests; initial node HTML is captured.
 			querySelectorAll: () => [],
@@ -88,6 +103,13 @@ async function page(initial: DashboardState) {
 		location: { protocol: "http:", host: "dashboard.invalid" },
 		setTimeout: () => 0,
 		setInterval: () => 0,
+		clearTimeout: () => {},
+		innerWidth: 1280,
+		innerHeight: 800,
+		matchMedia: () => ({ matches: false, addEventListener() {} }),
+		requestAnimationFrame: () => 0,
+		addEventListener: () => {},
+		Date,
 	});
 	await new Promise<void>((resolve) => setImmediate(resolve));
 	expect(requests).toEqual(["/api/state"]);
