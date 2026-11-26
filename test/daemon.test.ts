@@ -972,6 +972,8 @@ for (const scenario of ["slow probe", "unmeasurable"] as const) test(`R1 (${scen
 
 test("R1: a queue pass measures each node at most once, keeps a failed sample for the pass and never probes that node", async () => {
 	const f = placementFixture(1);
+	// Keep active-task observation off the counted preflight transport.
+	fakeCoordinator(f.fleet, () => 2);
 	const sampled = new Map<string, number>();
 	const sample = async (n: NodeConfig) => {
 		sampled.set(n.id, (sampled.get(n.id) ?? 0) + 1);

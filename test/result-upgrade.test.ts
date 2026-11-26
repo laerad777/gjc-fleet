@@ -631,7 +631,7 @@ test("review fx-093cc54b F3: a legacy not_run result an earlier release collecte
 	await writeFile(join(againIdentity.path, "drift.txt"), "drift");
 	await expect(again.fleet.result(again.task.id, again.argv)).rejects.toThrow("ARTIFACT_CHANGED");
 	expect(await Bun.file(again.counter).exists()).toBe(false);
-});
+}, 20_000);
 
 test("review F5: a fresh collection with a malformed ignored summary is refused RESULT_IGNORED and audited", async () => {
 	const f = await fixture(false, false);

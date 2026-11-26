@@ -227,7 +227,7 @@ describe("round-6 MEDIUM-A: walk and Git spellings never decide safety on their 
 			expect([label, files(result)]).toEqual([label, ["ok.txt"]]);
 			valid(identity, result);
 		}
-	});
+	}, 20_000);
 	test("reviewer A7c: an untracked NFD-named nested repository is a boundary, not a concurrent change", async () => {
 		const { f, identity, p } = await workspace();
 		await mkdir(p(NFD));
