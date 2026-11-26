@@ -12,11 +12,11 @@ import { writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import { runInNewContext } from "node:vm";
+import { renderDashboardFixture } from "./dashboard-vm";
 import { FleetStore } from "../src/store";
 import { Fleet, validateResult } from "../src/fleet";
 import { FleetError, observationDigest, validateTaskInput } from "../src/core";
-import { getDashboardState, getDashboardTask, renderDashboardHtml } from "../src/dashboard";
+import { getDashboardState, getDashboardTask } from "../src/dashboard";
 import { preflightPlacement } from "../src/placement-preflight";
 import { ClawhipControl, controlBinding, type ControlCommand } from "../src/clawhip-control";
 import { checkPreparation, collectResult, outputHeadCreated, prepareWorkspace, sha256 as sha256hex } from "../src/workspace";
@@ -477,7 +477,7 @@ describe("review findings R6-R15, R20", () => {
 			const op = store.getOperation(t.id, "prepare") as any;
 			expect([role, op?.payload?.reviewDirAbsent]).toEqual([role, role ? true : undefined]);
 		}
-	}, 30_000);
+	});
 	test("R8: Step 1b accepts only root report-<uuid>.md or fleet-review/report.md, bound to task id + path + sha, --role required", () => {
 		const db = dbOf(main.store);
 		const op = (id: string, path: string, text: string, role: any = "review") => ({ actor: "operator", reason: "legacy review, report only", reportPath: path, reportSha256: sha(text), role });
@@ -1484,21 +1484,6 @@ describe("rollback to 6b95dde (FLEET_PRISTINE)", () => {
 });
 
 async function renderPage(state: any): Promise<string> {
-	class El { innerHTML = ""; textContent = ""; className = ""; lastElementChild = { textContent: "" }; classList = { add() {}, remove() {}, toggle() {} }; addEventListener() {} }
-	const elements = new Map<string, El>();
-	let script = "";
-	await new HTMLRewriter()
-		.on("[id]", { element(e) { elements.set(e.getAttribute("id")!, new El()); } })
-		.on("script", { text(chunk) { script += chunk.text; } })
-		.transform(new Response(renderDashboardHtml())).text();
-	runInNewContext(script, {
-		document: { getElementById: (id: string) => elements.get(id) ?? new El(), body: new El(), querySelector: () => new El(), querySelectorAll: () => [] },
-		fetch: async () => ({ ok: true, json: async () => JSON.parse(JSON.stringify(state)) }),
-		WebSocket: class {},
-		location: { protocol: "http:", host: "dashboard.invalid" },
-		setTimeout: () => 0,
-		setInterval: () => 0,
-	});
-	await new Promise<void>((resolve) => setImmediate(resolve));
+	const elements = await renderDashboardFixture(state);
 	return [...elements.values()].map((e) => e.innerHTML + e.textContent).join("\n");
 }
