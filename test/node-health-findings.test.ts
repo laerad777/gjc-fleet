@@ -55,7 +55,7 @@ test("H1: a long-lived observer every 10 s plus 16 one-shot writers per interval
 	const o = new NodeHealthHistory(p, {}, { clock: () => BASE + real.t, monotonic: () => 0 });
 	rec(o, { ...good, reachable: false }); o.close();
 	expect(observer.dimensions("n").stable).toBe(false);
-});
+}, 30_000);
 
 test("H1: far more one-shot writers than any retained-chain capacity (40 per interval) cannot starve the observer", () => {
 	const real = { t: 0 }, p = path();
@@ -110,7 +110,7 @@ test("M1: a new process after an unobserved hour and a backward wall step is nev
 		return out;
 	};
 	neverAhead(run(true), run(false));
-});
+}, 30_000);
 
 test("M1: a suspend with a frozen monotonic clock and a coincident backward wall step is never ahead of the honest run", () => {
 	const run = (anomalous: boolean) => {

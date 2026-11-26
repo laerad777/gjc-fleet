@@ -81,16 +81,44 @@ test("observation eligibility is the daemon's single rule over metadata-only row
 	expect(observationKind(settled, Date.parse("2026-01-02T11:00:01Z"))).toBeUndefined();
 });
 
-test("fairness: a node at 90 s per call (scaled 1:100 to 900 ms) never delays other nodes; one call per node, one observation per task", async () => {
+test("fairness: a node with a deliberately held read never delays other nodes; one call per node, one observation per task", async () => {
 	const f = fixture(["fast-a", "fast-b", "slow-win"]);
 	const ids = { "fast-a": [] as string[], "fast-b": [] as string[], "slow-win": [] as string[] };
 	for (const [nodeId, n] of [["fast-a", 5], ["fast-b", 5], ["slow-win", 3]] as const) for (let i = 0; i < n; i++) ids[nodeId].push(activeOn(f.store, nodeId, `${nodeId}-${i}`));
 	const stats = fakeCoordinator(f.fleet, (nodeId) => (nodeId === "slow-win" ? 900 : 20));
-	const d = daemon(f.fleet);
-	const started = Date.now();
-	await runFor(d, 3_300);
-	const elapsed = Date.now() - started;
+	const connect = (f.fleet as any).connect;
+	const slowGate = Promise.withResolvers<void>();
+	let slowStarted = false;
+	let slowFinished = false;
+	(f.fleet as any).connect = async (n: NodeConfig) => {
+		const rpc = await connect(n);
+		if (n.id !== "slow-win" || slowStarted) return rpc;
+		const call = rpc.call.bind(rpc);
+		rpc.call = async (name: string, args: unknown) => {
+			if (name !== "gjc_coordinator_read_turn") return call(name, args);
+			slowStarted = true;
+			await slowGate.promise;
+			try { return await call(name, args); } finally { slowFinished = true; }
+		};
+		return rpc;
+	};
 	const reads = (nodeId: keyof typeof ids) => ids[nodeId].map((id) => stats.reads.get(`session-${id}`) ?? 0);
+	const d = daemon(f.fleet, { leaseMs: 60_000 });
+	const done = d.run();
+	try {
+		await until(() => slowStarted, 8000);
+		// The slow read cannot finish during this interval. Requiring every fast task to
+		// make ten reads proves independence without racing a fixed runner wall clock.
+		await until(() => [reads("fast-a"), reads("fast-b")].every((counts) => Math.min(...counts) >= 10), 8000);
+		expect(slowFinished).toBe(false);
+		expect(reads("slow-win")).toEqual([0, 0, 0]);
+		slowGate.resolve();
+		await until(() => Math.min(...reads("slow-win")) >= 1, 8000);
+	} finally {
+		slowGate.resolve();
+		d.stop();
+		await done;
+	}
 	// One in-flight call per node and one observation per task at any time.
 	for (const nodeId of Object.keys(ids)) expect(stats.maxNodeConcurrency.get(nodeId)).toBe(1);
 	expect(stats.maxTaskConcurrency).toBe(1);
@@ -98,7 +126,6 @@ test("fairness: a node at 90 s per call (scaled 1:100 to 900 ms) never delays ot
 	const slow = reads("slow-win");
 	expect(Math.min(...slow)).toBeGreaterThanOrEqual(1);
 	expect(Math.max(...slow) - Math.min(...slow)).toBeLessThanOrEqual(1);
-	expect(stats.nodeCalls.get("slow-win")!.length).toBeLessThanOrEqual(Math.ceil(elapsed / 900) + 1);
 	// The fast nodes are not held back by the slow node: many observations each, evenly spread.
 	for (const nodeId of ["fast-a", "fast-b"] as const) {
 		const counts = reads(nodeId);
@@ -109,7 +136,7 @@ test("fairness: a node at 90 s per call (scaled 1:100 to 900 ms) never delays ot
 	// Graceful stop let the slow in-flight call finish; nothing left unknown or abandoned.
 	for (const id of Object.values(ids).flat()) expect(f.store.task(id)!.phase).toBe("active");
 	expect(f.store.daemonStatus()).toBeUndefined();
-}, 20_000);
+}, 30_000);
 
 test("per-node budget and backoff: a failing node backs off, its own tasks are not marked unknown, others continue", async () => {
 	const f = fixture(["good", "bad"]);

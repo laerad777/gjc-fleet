@@ -10,6 +10,7 @@ import { hostname } from "node:os";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { NodeConfig, TaskInput, TaskRecord } from "../src/contracts";
+import { normalizeDiagnostic } from "../src/diagnostic";
 import { Fleet } from "../src/fleet";
 import { exitCodes, runTask, watchTasks } from "../src/operator-commands";
 import { operatorReleaseResource, returnResources, type ReturnReport } from "../src/resource-return";
@@ -805,6 +806,13 @@ type World = Awaited<ReturnType<typeof world>>;
 async function settleByA(w: World, kind: string, defer: boolean) {
 	expect((await w.poll(0)).task.result?.executionTerminal).not.toBe(true);
 	const settled = (await w.poll(INTERVAL)).task;
+	if (settled.phase === "blocked_unknown") {
+		const diagnostic = normalizeDiagnostic(w.events("unknown").at(-1)?.data?.failureDiagnostic);
+		if (diagnostic) {
+			// Fixed Fleet diagnostic fields only: never dump audit events or transport output.
+			console.error("settleByA: second poll failed", diagnostic.source, diagnostic.phase, diagnostic.code);
+		}
+	}
 	expect(settled).toMatchObject({ phase: "failed", held: defer, result: { executionTerminal: true, verified: false, settlement: { kind } } });
 	return settled;
 }
