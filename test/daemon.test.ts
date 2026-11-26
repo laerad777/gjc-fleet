@@ -583,7 +583,8 @@ test("300 tasks with 8 MB rows: metadata-only scheduling, bounded memory and tim
 	let rssPeak = 0;
 	const cycleTimes: number[] = [];
 	let allObservedMs = 0;
-	const d = daemon(f.fleet);
+	// This fixture measures scheduling and memory, not lease renewal under hosted-runner load.
+	const d = daemon(f.fleet, { leaseMs: 60_000 });
 	try {
 		Bun.gc(true);
 		rssBefore = process.memoryUsage().rss;
