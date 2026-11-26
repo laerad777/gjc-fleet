@@ -26,6 +26,12 @@ import { basename, dirname, join, posix, resolve, win32 } from "node:path";
 const WIN = process.platform === "win32";
 /** Executable suffixes Bun's own Windows lookup tries, in its order. */
 const WIN_SUFFIXES = [".exe", ".cmd", ".bat"];
+/**
+ * Bare name Fleet Git resolves. On Windows this is `git.exe` only so a trusted
+ * PATH directory that holds only `git.cmd`/`git.bat` cannot win ahead of a later
+ * `git.exe` (general `resolveProgram` still searches `.exe`/`.cmd`/`.bat`).
+ */
+export const FLEET_GIT_NAME = WIN ? "git.exe" : "git";
 export const NULL_DEVICE = WIN ? "NUL" : "/dev/null";
 
 export class UntrustedProgramError extends Error {
@@ -343,7 +349,7 @@ export interface GitSpawnOptions {
 function gitArgv(repo: string, args: string[], options: GitSpawnOptions = {}) {
 	const target = resolve(repo);
 	const untrusted = [target, ...(options.untrusted ?? [])];
-	const git = resolveProgram(options.program ?? "git", { untrusted });
+	const git = resolveProgram(options.program ?? FLEET_GIT_NAME, { untrusted });
 	return {
 		target,
 		git,

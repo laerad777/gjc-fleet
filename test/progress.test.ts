@@ -1417,7 +1417,7 @@ describe("retention: settled record and coalesced stall episodes (review r4 F2)"
 		expect(w.kinds(t.id)).toEqual(["progress_stalled", "progress_recovered"]);
 		expect(w.store.events(t.id).at(-1)!.data).toMatchObject({ verdict: "progressing", previousVerdict: "stalled_model", stalledSince: new Date(HUB0 + 540_010).toISOString(), recoveredAt: new Date(HUB0 + 86_460_010).toISOString(), coalesced, cause: "transcript_progressed" });
 		expect(w.progress(t.id)!.stall).toBeUndefined();
-	});
+	}, 30_000);
 
 	test("the coalescing window boundary: a recovery is audited, and a stall starts a new episode, only strictly after it", () => {
 		const w = world();

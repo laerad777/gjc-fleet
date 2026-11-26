@@ -1,5 +1,5 @@
 import { readdir, lstat } from "node:fs/promises";
-import { resolve, join, relative } from "node:path";
+import { resolve, join, relative, basename } from "node:path";
 import { createHash } from "node:crypto";
 import { spawnTrusted } from "../src/spawn";
 
@@ -27,6 +27,15 @@ export function classify(id: string, text: string | undefined, receipt?: { statu
  return "collected_unverified";
 }
 
+/**
+ * Match report-*.md with the host basename so Windows `\` inventory keys
+ * still qualify, while a POSIX name that literally contains `\` is not
+ * split. Path keys in files/receipts stay as inventory wrote them.
+ */
+export function isReportPath(path: string): boolean {
+ return /^report-.*\.md$/.test(basename(path));
+}
+
 // This command reads only local files and executes only this node's local tests/build.
 // Report prose, file existence, and historical CLEAN labels never establish success.
 if (import.meta.main) {
@@ -39,7 +48,7 @@ if (import.meta.main) {
  const receipts: Record<string, { status?: string; failureCode?: string }> = receiptArg
   ? await Bun.file(resolve(root, receiptArg.slice("--receipts=".length))).json() : {};
  const reports = [];
- for (const path of Object.keys(before).filter(path => /(^|\/)report-.*\.md$/.test(path))) {
+ for (const path of Object.keys(before).filter(isReportPath)) {
   reports.push({ path, sha256: before[path], classification: classify(path, await Bun.file(join(root, path)).text(), receipts[path]), reason: "Report artifact is not CLEAN; receipt classifications are local evidence only" });
  }
  const commands = [];

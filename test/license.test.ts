@@ -63,7 +63,8 @@ test("license gate rejects unreviewed incorporation, dependency, short pin, misl
 	expect(() => validateInventory(mutate((i) => (i.npmDevDependencies[0].version = "9.9.9")), pkg, lockText)).toThrow();
 	// package.json and bun.lock must agree (frozen install would fail otherwise).
 	expect(() => validateInventory(inventory, pkg, lockText.replace('"typescript": "5.9.3"', '"typescript": "^5.9.3"'))).toThrow();
-	expect(() => validateInventory(inventory, pkg, lockText.replace(/"undici-types": \["undici-types@8\.9\.0".*\n/, ""))).toThrow();
+	// Accept CRLF lockfiles (Windows checkout) when stripping a package line.
+	expect(() => validateInventory(inventory, pkg, lockText.replace(/"undici-types": \["undici-types@8\.9\.0".*\r?\n/, ""))).toThrow();
 	// Lockfile package name and the resolved version of direct deps must match the manifest/inventory.
 	expect(() => validateInventory(inventory, pkg, lockText.replace('"typescript": ["typescript@5.9.3"', '"typescript": ["evil@5.9.3"'))).toThrow();
 	const bumped = lockText.replace('"typescript": ["typescript@5.9.3"', '"typescript": ["typescript@5.9.4"');

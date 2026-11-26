@@ -339,7 +339,9 @@ test("help and README render the single exit table verbatim", async () => {
 	const [stdout, exit] = await Promise.all([new Response(help.stdout).text(), help.exited]);
 	expect(exit).toBe(0);
 	expect(stdout).toContain(exitCodeHelp());
-	expect(await readFile(join(root, "README.md"), "utf8")).toContain(exitCodeMarkdown());
+	// Checkout may use CRLF on Windows; compare on normalized newlines.
+	const readme = (await readFile(join(root, "README.md"), "utf8")).replaceAll("\r\n", "\n");
+	expect(readme).toContain(exitCodeMarkdown());
 });
 
 test("aggregation follows the table's rank for every pair; an unknown is never masked", () => {

@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync, type SpawnSyncReturns } from "node:child_process";
+import { existsSync, statSync } from "node:fs";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { basename, join } from "node:path";
@@ -107,7 +108,8 @@ function treeFsSpawn(
 		}
 		if (name === "test" && args[0] === "-e") return okSpawn("", 0);
 		if (name === "test" && args[0] === "-f") {
-			const p = args[1] ?? "";
+			// join() uses `\` on Windows; compare on a normalized form.
+			const p = (args[1] ?? "").replaceAll("\\", "/");
 			if (p.endsWith("/.git")) return okSpawn("", 1);
 			if (p.endsWith("/HEAD") || p.includes("/refs/")) return okSpawn("", 0);
 			return okSpawn("", 1);
@@ -115,7 +117,7 @@ function treeFsSpawn(
 		if (name === "head") {
 			if (headResult === "timeout") return timeoutSpawn();
 			if (headResult === "read_failed") return failSpawn(1);
-			const p = args[args.length - 1] ?? "";
+			const p = (args[args.length - 1] ?? "").replaceAll("\\", "/");
 			if (p.endsWith("/HEAD")) return okSpawn(`ref: refs/heads/main\n`);
 			if (p.includes("/refs/heads/main")) return okSpawn(`${SHA}\n`);
 			return failSpawn(1);
@@ -209,37 +211,90 @@ describe("release-probe-readonly helpers", () => {
 	});
 
 	test("readTreeHeadFromGitDir does not follow a gitfile", async () => {
-		const realSpawn: SpawnFn = (cmd, args, opts) =>
-			spawnSync(cmd, args, opts);
-		const binsRes = resolveProbeBinsTimed(realSpawn, 3_000);
-		// Linux CI may lack launchctl — skip full resolve; use test/head only path via fake for missing bins
-		if (!binsRes.ok) {
-			// Minimal: only exercise gitfile with injected bins that point at real test/head
-			const testBin = "/bin/test";
-			const headBin = "/usr/bin/head";
-			const bins: ProbeBins = { ...FAKE_BINS, test: testBin, head: headBin };
-			const dir = await mkdtemp(join(tmpdir(), "release-probe-"));
-			const gitfile = join(dir, ".git");
-			await writeFile(gitfile, "gitdir: /elsewhere\n");
+		const dir = await mkdtemp(join(tmpdir(), "release-probe-"));
+		const gitfile = join(dir, ".git");
+		const gitfileBody = "gitdir: /elsewhere\n";
+		await writeFile(gitfile, gitfileBody);
+		const reads: string[] = [];
+		const calls: { name: string; args: string[] }[] = [];
+		let record = false;
+		const samePath = (path: string) => path.replaceAll("\\", "/") === gitfile.replaceAll("\\", "/");
+		const noteCall = (cmd: string, args: readonly string[], stdout: string) => {
+			if (!record) return;
+			calls.push({ name: cmdName(cmd), args: [...args] });
+			if (cmdName(cmd) === "head" && args.some(samePath)) reads.push(gitfile);
+			if (stdout.includes("gitdir:") || stdout.includes("/elsewhere")) reads.push(gitfile);
+		};
+		const expectOnlyStatFlags = () => {
+			expect(calls).toEqual([
+				{ name: "test", args: ["-e", gitfile] },
+				{ name: "test", args: ["-f", gitfile] },
+			]);
+			expect(reads).toEqual([]);
+		};
+
+		if (process.platform === "win32") {
+			// Do not probe /bin/test or /usr/bin/head. Those paths are not the Windows check.
+			record = true;
+			const spawn: SpawnFn = (cmd, args) => {
+				const name = cmdName(cmd);
+				if (name === "test") {
+					const flag = args[0];
+					const path = args[1] ?? "";
+					noteCall(cmd, args, "");
+					if (flag === "-e") return okSpawn("", existsSync(path) ? 0 : 1);
+					if (flag === "-f") {
+						try {
+							return okSpawn("", statSync(path).isFile() ? 0 : 1);
+						} catch {
+							return okSpawn("", 1);
+						}
+					}
+					return failSpawn(2);
+				}
+				if (name === "head") {
+					const path = args[args.length - 1] ?? "";
+					noteCall(cmd, args, samePath(path) ? gitfileBody : "");
+					return failSpawn(1);
+				}
+				noteCall(cmd, args, "");
+				return failSpawn(1);
+			};
 			expect(
 				readTreeHeadFromGitDir(gitfile, {
-					spawn: realSpawn,
-					bins,
+					spawn,
+					bins: FAKE_BINS,
 					fileTimeoutMs: 3_000,
 				}),
 			).toEqual({ kind: "unreadable" });
+			expectOnlyStatFlags();
 			return;
 		}
-		const dir = await mkdtemp(join(tmpdir(), "release-probe-"));
-		const gitfile = join(dir, ".git");
-		await writeFile(gitfile, "gitdir: /elsewhere\n");
+
+		const realSpawn: SpawnFn = (cmd, args, opts) => {
+			const result = spawnSync(cmd, args, opts);
+			const stdout = typeof result.stdout === "string" ? result.stdout : "";
+			noteCall(cmd, args, stdout);
+			return result;
+		};
+		const binsRes = resolveProbeBinsTimed(realSpawn, 3_000);
+		const bins = binsRes.ok
+			? binsRes.value
+			: existsSync("/bin/test") && existsSync("/usr/bin/head")
+				? { ...FAKE_BINS, test: "/bin/test", head: "/usr/bin/head" }
+				: undefined;
+		if (!bins) {
+			throw new Error("Unix gitfile check requires /bin/test and /usr/bin/head; refusing a silent mock");
+		}
+		record = true;
 		expect(
 			readTreeHeadFromGitDir(gitfile, {
 				spawn: realSpawn,
-				bins: binsRes.value,
+				bins,
 				fileTimeoutMs: 3_000,
 			}),
 		).toEqual({ kind: "unreadable" });
+		expectOnlyStatFlags();
 	});
 });
 
