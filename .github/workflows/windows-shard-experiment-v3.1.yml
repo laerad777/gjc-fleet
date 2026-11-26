@@ -1,6 +1,6 @@
 name: Windows sharded test experiment
 
-# Experiment only: manual (workflow_dispatch), non-required, and completely outside the
+# Experiment only: scoped to PR #27 (or manual dispatch), non-required, and outside the
 # required PR gate in ci.yml. It runs the full Windows suite twice in one run: once serial
 # (the baseline) and once split with `bun test --shard=M/2`, then sums the two shards and
 # compares against the serial job of the SAME commit. Every run also writes a JUnit file.
@@ -26,6 +26,10 @@ name: Windows sharded test experiment
 # actions.
 on:
   workflow_dispatch:
+  pull_request:
+    types: [synchronize]
+    branches: [main]
+    paths: ['.github/workflows/windows-shard-experiment-v3.1.yml']
 
 permissions:
   contents: read
@@ -37,6 +41,7 @@ concurrency:
 
 jobs:
   serial:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.pull_request.number == 27 && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'ci/windows-shard-equivalence-experiment') }}
     name: Test (windows-latest, serial baseline)
     runs-on: windows-latest
     # Same budget as the serial windows job in ci.yml.
@@ -95,6 +100,7 @@ jobs:
           if-no-files-found: error
 
   shard:
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.pull_request.number == 27 && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'ci/windows-shard-equivalence-experiment') }}
     name: Test (windows-latest, shard ${{ matrix.shard }}/2)
     runs-on: windows-latest
     # Same budget as the serial job; each shard should finish well under it.
@@ -162,7 +168,7 @@ jobs:
   aggregate:
     name: Compare sharded run with the serial baseline
     needs: [serial, shard]
-    if: ${{ always() }}
+    if: ${{ always() && (github.event_name == 'workflow_dispatch' || (github.event.pull_request.number == 27 && github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'ci/windows-shard-equivalence-experiment')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
