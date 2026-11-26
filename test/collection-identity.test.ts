@@ -18,21 +18,24 @@ import { repositoryFixture } from "./fixtures/coordinator";
 const NFC = "caf\u00e9";
 const NFD = "cafe\u0301";
 const directories: string[] = [];
-// Windows cannot remove a directory a helper still holds (cwd/open handle); Bun ignores rm's
-// maxRetries, so the bounded wait for that release is explicit. Removing large fixtures also
-// outlasts the default hook timeout on a loaded host.
-async function removeDir(dir: string) {
+// Windows may briefly keep a fixture locked by a previous helper. Retry only
+// EBUSY, and keep the original error when the bounded retry budget runs out.
+async function removeFixtureDir(dir: string) {
 	for (let attempt = 0; ; attempt++) {
 		try {
-			return await rm(dir, { recursive: true, force: true });
-		} catch (error: any) {
-			if (process.platform !== "win32" || error?.code !== "EBUSY" || attempt >= 30) throw error;
+			await rm(dir, { recursive: true, force: true });
+			return;
+		} catch (error) {
+			if (process.platform !== "win32" || (error as NodeJS.ErrnoException | null)?.code !== "EBUSY" || attempt >= 30) {
+				throw error;
+			}
 			await Bun.sleep(100);
 		}
 	}
 }
+// Removing the large fixtures outlasts the default hook timeout on a loaded host.
 afterEach(async () => {
-	for (const dir of directories.splice(0)) await removeDir(dir);
+	for (const dir of directories.splice(0)) await removeFixtureDir(dir);
 }, 120_000);
 const gitOk = async (argv: string[], cwd: string) => {
 	const r = await run(["git", "-c", "user.name=Review", "-c", "user.email=r@example.invalid", "-c", "commit.gpgsign=false", ...argv], cwd);
@@ -188,51 +191,43 @@ describe("round-6 MEDIUM-A: walk and Git spellings never decide safety on their 
 			}
 			valid(identity, result);
 		}
-	}, 30_000);
+	});
 	// Round 9: the index is node-owned, so a worker-recorded alias entry is not tracked at all.
-	test(
-		"a boundary matched by several Git spellings withholds every one of them; a worker index alias is not a tracked entry",
-		async () => {
-			const { f, identity, p } = await workspace({ "Src/answer.txt": "orig\n" });
-			// The worker records a second, differently cased index entry for the same directory.
-			await writeFile(p("Src", "other.txt"), "LEAK_INDEX_ALIAS");
-			const blob = (await gitOk(["hash-object", "-w", p("Src", "other.txt")], identity.path)).trim();
-			await gitOk(["update-index", "--add", "--cacheinfo", "100644," + blob + ",src/other.txt"], identity.path);
-			await writeFile(p("Src", "answer.txt"), "LEAK_TRACKED_ALIAS");
-			await gitOk(["init", "-q", p("Src")], f.dir);
-			const result = await collectResult(identity, []);
-			expect(JSON.stringify(result)).not.toContain("LEAK_");
-			expect(files(result)).toEqual([]);
-			expect(result.exportComplete).toBe(false);
-			expect(keyed(result.exclusions!)).toEqual([{ path: "src", reason: "nested_repository", outerTrackedEntries: 1 }]);
+	test("a boundary matched by several Git spellings withholds every one of them; a worker index alias is not a tracked entry", async () => {
+		const { f, identity, p } = await workspace({ "Src/answer.txt": "orig\n" });
+		// The worker records a second, differently cased index entry for the same directory.
+		await writeFile(p("Src", "other.txt"), "LEAK_INDEX_ALIAS");
+		const blob = (await gitOk(["hash-object", "-w", p("Src", "other.txt")], identity.path)).trim();
+		await gitOk(["update-index", "--add", "--cacheinfo", "100644," + blob + ",src/other.txt"], identity.path);
+		await writeFile(p("Src", "answer.txt"), "LEAK_TRACKED_ALIAS");
+		await gitOk(["init", "-q", p("Src")], f.dir);
+		const result = await collectResult(identity, []);
+		expect(JSON.stringify(result)).not.toContain("LEAK_");
+		expect(files(result)).toEqual([]);
+		expect(result.exportComplete).toBe(false);
+		expect(keyed(result.exclusions!)).toEqual([{ path: "src", reason: "nested_repository", outerTrackedEntries: 1 }]);
+		valid(identity, result);
+	});
+	test("reviewer A7/A7e/A7k: a .gitignore inside an out-of-tree-ignored directory spelled differently on disk keeps the export incomplete", async () => {
+		const cases: [string, string, string, string][] = [
+			["A7 info/exclude NFD", NFD, "caf*/\n", "info"],
+			["A7e XDG NFD", NFD, "caf*/\n", "xdg"],
+			["A7k info/exclude case variant", "lib", "lib/\n", "info"],
+		];
+		for (const [label, directory, rules, where] of cases) {
+			const { f, identity, p } = await workspace(where === "info" && directory === "lib" ? { "Lib/keep.txt": "k" } : {});
+			if (directory === "lib") await rename(p("Lib"), p("lib"));
+			await mkdir(p(directory), { recursive: true });
+			await writeFile(p(directory, ".gitignore"), "*\n");
+			await writeFile(p(directory, "answer.ts"), "DELIVERABLE_" + label);
+			await writeFile(p("ok.txt"), "ok");
+			if (where === "info") await infoExclude(f.repo, rules);
+			const result = where === "xdg" ? await withXdg(f.dir, rules, () => collectResult(identity, [])) : await collectResult(identity, []);
+			expect([label, result.exportComplete, JSON.stringify(result).includes("DELIVERABLE_")]).toEqual([label, false, false]);
+			expect([label, files(result)]).toEqual([label, ["ok.txt"]]);
 			valid(identity, result);
-		},
-		30_000,
-	);
-	test(
-		"reviewer A7/A7e/A7k: a .gitignore inside an out-of-tree-ignored directory spelled differently on disk keeps the export incomplete",
-		async () => {
-			const cases: [string, string, string, string][] = [
-				["A7 info/exclude NFD", NFD, "caf*/\n", "info"],
-				["A7e XDG NFD", NFD, "caf*/\n", "xdg"],
-				["A7k info/exclude case variant", "lib", "lib/\n", "info"],
-			];
-			for (const [label, directory, rules, where] of cases) {
-				const { f, identity, p } = await workspace(where === "info" && directory === "lib" ? { "Lib/keep.txt": "k" } : {});
-				if (directory === "lib") await rename(p("Lib"), p("lib"));
-				await mkdir(p(directory), { recursive: true });
-				await writeFile(p(directory, ".gitignore"), "*\n");
-				await writeFile(p(directory, "answer.ts"), "DELIVERABLE_" + label);
-				await writeFile(p("ok.txt"), "ok");
-				if (where === "info") await infoExclude(f.repo, rules);
-				const result = where === "xdg" ? await withXdg(f.dir, rules, () => collectResult(identity, [])) : await collectResult(identity, []);
-				expect([label, result.exportComplete, JSON.stringify(result).includes("DELIVERABLE_")]).toEqual([label, false, false]);
-				expect([label, files(result)]).toEqual([label, ["ok.txt"]]);
-				valid(identity, result);
-			}
-		},
-		60_000,
-	);
+		}
+	});
 	test("reviewer A7c: an untracked NFD-named nested repository is a boundary, not a concurrent change", async () => {
 		const { f, identity, p } = await workspace();
 		await mkdir(p(NFD));

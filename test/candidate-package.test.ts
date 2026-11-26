@@ -1,6 +1,6 @@
 import { afterAll, expect, test } from "bun:test";
 import { createHash } from "node:crypto";
-import { closeSync, copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, openSync, readdirSync, readFileSync, realpathSync, rmdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmdirSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { basename, delimiter, dirname, isAbsolute, join, relative } from "node:path";
 import { gunzipSync, gzipSync } from "node:zlib";
@@ -1402,265 +1402,186 @@ const run = (cmd: string[]) => {
 	if (r.exitCode !== 0) throw Error(`${cmd.join(" ")} exited ${r.exitCode}: ${r.stdout}${r.stderr}`);
 	return r.stdout.toString();
 };
-/** A 512 MB expandable VHDX under `dir` (NTFS unless `fs`), attached and mounted at `dir\mnt` only (no drive letter). */
-function folderMountedVolume(dir: string, fs = "ntfs", at = join(dir, "mnt")) {
+type FolderVolume = {
+	mnt: string;
+	volume: string;
+	mount(at: string): void;
+	unmount(at: string): void;
+	/** Unmounts, detaches (confirmed) and deletes the VHDX. Throws if any step is not confirmed; never deletes an attached image. */
+	done(): void;
+};
+/** One error as is, several as an AggregateError whose message names every one (so a test runner prints them all). */
+function combineErrors(errors: unknown[], what: string): unknown {
+	if (errors.length === 1) return errors[0];
+	const text = errors.map((e, i) => `[${i + 1}] ${e instanceof Error ? e.message : String(e)}`).join("; ");
+	return new AggregateError(errors, `${what}: ${text}`);
+}
+/**
+ * Tears down every registered volume (latest first), continuing after a failure, then removes the outer fixture
+ * only when every volume was confirmed detached: a recursive delete must never reach a still-attached volume.
+ * A failure of the test body is never masked: it is rethrown together with every teardown error.
+ */
+function teardownVolumes(volumes: FolderVolume[], removeOuter: () => void, body: { failed: boolean; error?: unknown }) {
+	const errors: unknown[] = [];
+	for (const x of [...volumes].reverse()) {
+		try {
+			x.done();
+		} catch (e) {
+			errors.push(e);
+		}
+	}
+	if (errors.length === 0) {
+		try {
+			removeOuter();
+		} catch (e) {
+			errors.push(e);
+		}
+	} else {
+		errors.push(Error("outer fixture recursive delete skipped: a volume was not confirmed detached"));
+	}
+	if (body.failed) throw errors.length ? combineErrors([body.error, ...errors], "test failed and teardown also failed") : body.error;
+	if (errors.length) throw combineErrors(errors, "teardown failed");
+}
+/**
+ * A 512 MB expandable VHDX under `dir` (NTFS unless `fs`), attached and mounted at `dir\mnt` only (no drive letter).
+ * The volume is pushed onto `volumes` BEFORE the first diskpart create/attach, so a creation that fails halfway
+ * (attached but not formatted or mounted) is still detached by the caller's teardown.
+ */
+function folderMountedVolume(dir: string, volumes: FolderVolume[], fs = "ntfs", at = join(dir, "mnt")): FolderVolume {
 	mkdirSync(dir, { recursive: true });
 	mkdirSync(at, { recursive: true });
-	// Always talk to DiskPart with one long-path spelling; mixing RUNNER~1 short paths with runneradmin
-	// long paths made select succeed while detach reported "already detached" and left the file EBUSY.
-	const dirLong = realpathSync.native(dir);
-	const mountAt = realpathSync.native(at);
-	const vhdx = join(dirLong, "v.vhdx");
+	// Normalize once before attaching. DiskPart and Get-DiskImage must use the same
+	// long path, including for nested and FAT32 fixtures created under the runner temp directory.
+	dir = realpathSync.native(dir);
+	at = realpathSync.native(at);
+	const vhdx = join(dir, "v.vhdx");
+	const fixtureVhdx = `${basename(dir)}/${basename(vhdx)}`;
 	const diskpart = (...lines: string[]) => {
-		writeFileSync(join(dirLong, "dp.txt"), lines.join("\r\n") + "\r\n");
-		return run(["diskpart", "/s", join(dirLong, "dp.txt")]);
+		writeFileSync(join(dir, "dp.txt"), lines.join("\r\n") + "\r\n");
+		return run(["diskpart", "/s", join(dir, "dp.txt")]);
 	};
-	diskpart(
-		`create vdisk file="${vhdx}" maximum=512 type=expandable`,
-		`select vdisk file="${vhdx}"`,
-		"attach vdisk",
-		"create partition primary",
-		`format fs=${fs} quick label=CANDS1`,
-		`assign mount="${mountAt}"`,
-	);
-	const volume = run(["mountvol", mountAt + "\\", "/L"]).trim();
-	expect(volume).toMatch(/^\\\\\?\\Volume\{[0-9a-f-]+\}\\$/i);
-	const points = new Set([mountAt]);
-	// keepOnline last-mount /D is only for the raw Volume{GUID} junction case; default last unmount uses /P.
-	let lastMountRemovedWithDOnly = false;
-	return {
-		mnt: mountAt,
-		volume,
-		mount(at: string) {
-			mkdirSync(at, { recursive: true });
-			run(["mountvol", at + "\\", volume]);
-			points.add(at);
-			lastMountRemovedWithDOnly = false;
+	/** DiskPart detach + Get-DiskImage probe; deletes only when exit 0 and exactly one Attached=false. */
+	const detachConfirmedThenDelete = () => {
+		// A vhdx that is no longer visible is NOT a confirmed detach. Only the DiskPart result
+		// (exit 0 + successful detach text, or exit 87 + already detached) plus the Attached=false
+		// probe below confirms a detach; a missing file leaves the delete blocked.
+		if (!existsSync(vhdx)) {
+			throw Error(`vhdx not visible before detach for ${fixtureVhdx}; detach unconfirmed, skipped delete`);
+		}
+		// Detach can race with VDS already releasing the image. Accept only exit 0 with a
+		// successful detach, or exit 87 with "already detached" — never a bare text match.
+		writeFileSync(join(dir, "dp.txt"), [`select vdisk file="${vhdx}"`, "detach vdisk"].join("\r\n") + "\r\n");
+		const detach = Bun.spawnSync(["diskpart", "/s", join(dir, "dp.txt")]);
+		const detachText = `${detach.stdout}${detach.stderr}`;
+		const already = /already detached/i.test(detachText);
+		const detachedOk = detach.exitCode === 0 && /successfully detached/i.test(detachText);
+		const alreadyOk = detach.exitCode === 87 && already;
+		if (!detachedOk && !alreadyOk) {
+			throw Error(`diskpart detach not accepted for ${fixtureVhdx} (exit=${detach.exitCode}; already=${already})`);
+		}
+		// Path is an argv value (-ImagePath), never interpolated into PowerShell source.
+		writeFileSync(
+			join(dir, "probe-attached.ps1"),
+			[
+				"param([Parameter(Mandatory)][string]$ImagePath)",
+				"try {",
+				"  $i = Get-DiskImage -ImagePath $ImagePath -ErrorAction Stop",
+				"  if ($i.Attached -eq $true) { Write-Output 'Attached=true'; exit 0 }",
+				"  elseif ($i.Attached -eq $false) { Write-Output 'Attached=false'; exit 0 }",
+				"  else { Write-Output 'Attached=unknown'; exit 1 }",
+				"} catch {",
+				"  Write-Output 'Attached=unknown'",
+				"  exit 1",
+				"}",
+			].join("\r\n") + "\r\n",
+		);
+		const probeBudgetMs = 30_000;
+		const deadline = performance.now() + probeBudgetMs;
+		let lastProbe = "not run";
+		for (;;) {
+			const remainingMs = Math.floor(deadline - performance.now());
+			if (remainingMs <= 0) break;
+			const probe = Bun.spawnSync(
+				["powershell", "-NoProfile", "-File", join(dir, "probe-attached.ps1"), "-ImagePath", vhdx],
+				{ stdout: "pipe", stderr: "pipe", timeout: remainingMs },
+			);
+			const attachedLines = probe.stdout
+				.toString()
+				.split(/\r?\n/)
+				.map((line) => line.trim())
+				.filter((line) => /^Attached=/i.test(line));
+			const attached = attachedLines.length !== 1 ? `count=${attachedLines.length}`
+				: attachedLines[0] === "Attached=false" ? "false"
+				: attachedLines[0] === "Attached=true" ? "true"
+				: attachedLines[0] === "Attached=unknown" ? "unknown" : "invalid";
+			lastProbe = `probeExit=${probe.exitCode}; Attached=${attached}`;
+			if (probe.exitCode === 0 && attached === "false") {
+				rmSync(vhdx, { force: true });
+				return;
+			}
+			// Only a well-formed Attached=true can be transient. An invalid response
+			// or failed probe still blocks deletion immediately.
+			if (probe.exitCode !== 0 || attached !== "true") break;
+			const pauseMs = Math.min(250, Math.floor(deadline - performance.now()));
+			if (pauseMs <= 0) break;
+			Bun.sleepSync(pauseMs);
+		}
+		throw Error(`vhdx not confirmed detached for ${fixtureVhdx} (detachExit=${detach.exitCode}; ${lastProbe}); skipped delete`);
+	};
+	const points = new Set<string>();
+	const vol: FolderVolume = {
+		mnt: at,
+		volume: "",
+		mount(to: string) {
+			mkdirSync(to, { recursive: true });
+			run(["mountvol", to + "\\", vol.volume]);
+			points.add(to);
 		},
-		unmount(at: string, opts?: { keepOnline?: boolean }) {
-			const last = points.size === 1 && points.has(at);
-			const removal = last && !opts?.keepOnline ? "/P" : "/D";
-			if (last && removal === "/D") lastMountRemovedWithDOnly = true;
-			else if (!last) lastMountRemovedWithDOnly = false;
-			run(["mountvol", at + "\\", removal]);
-			points.delete(at);
+		unmount(from: string) {
+			run(["mountvol", from + "\\", "/D"]);
+			points.delete(from);
 		},
-		/**
-		 * Removes every mount point first: a recursive delete of the fixture must never reach the volume's files.
-		 * Returns whether mounts are confirmed gone. Callers must not recursively delete a tree when this is false.
-		 */
-		done(): { mountsCleared: boolean; errors: Error[] } {
-			// Keep going across volumes even when one step fails; surface every error without erasing mount tracking.
-			const errors: Error[] = [];
-			const push = (error: unknown) => {
-				errors.push(error instanceof Error ? error : new Error(String(error)));
-			};
-			const under = (path: string, root: string) => {
+		/** Removes every mount point first: a recursive delete of the fixture must never reach the volume's files. */
+		done() {
+			const errors: unknown[] = [];
+			for (const p of points) {
+				// A mountvol call that itself throws is recorded; the other unmounts and the
+				// detach attempts still run.
 				try {
-					const a = realpathSync.native(path).toLowerCase();
-					const b = realpathSync.native(root).toLowerCase();
-					return a === b || a.startsWith(b.endsWith("\\") ? b : b + "\\");
-				} catch {
-					return false;
+					const r = Bun.spawnSync(["mountvol", p + "\\", "/D"]);
+					if (r.exitCode !== 0) errors.push(Error(`mountvol /D failed for ${basename(dir)}/${basename(p)} (exit=${r.exitCode})`));
+				} catch (e) {
+					errors.push(e);
 				}
-			};
-			// Move cwd off the volume before offline; never recursively delete through a live mount.
+			}
+			points.clear();
 			try {
-				const cwd = process.cwd();
-				if (under(cwd, dirLong) || [...points].some((m) => under(cwd, m))) process.chdir(tmpdir());
-			} catch (error) {
-				push(error);
+				detachConfirmedThenDelete();
+			} catch (e) {
+				errors.push(e);
 			}
-			const mountSnapshot = [...points];
-			// Volume{...} on /L means still mounted. Clear tracking only for a confirmed unmount:
-			// /D exit 0 with no volume id, or an explicit mountvol "not mounted" status (not generic path errors).
-			const explicitNotMounted = (text: string) => /not currently mounted|is not a mounted volume/i.test(text);
-			for (const mount of [...points]) {
-				try {
-					// Removing a name does not dismount the volume. Offline it at the final mount.
-					const removal = points.size === 1 ? "/P" : "/D";
-					let lastDel = "";
-					let lastList = "";
-					let cleared = false;
-					for (let attempt = 0; attempt < 50; attempt++) {
-						const del = Bun.spawnSync(["mountvol", mount + "\\", removal]);
-						lastDel = `${del.stdout}${del.stderr}`;
-						const listed = Bun.spawnSync(["mountvol", mount + "\\", "/L"]);
-						lastList = `${listed.stdout}${listed.stderr}`;
-						const hasVolume = /Volume\{[0-9a-f-]+\}/i.test(lastList);
-						if (hasVolume) {
-							Bun.sleepSync(100);
-							continue;
-						}
-						if (del.exitCode === 0 || explicitNotMounted(lastDel) || explicitNotMounted(lastList)) {
-							points.delete(mount);
-							cleared = true;
-							break;
-						}
-						if (attempt === 49) break;
-						Bun.sleepSync(100);
-					}
-					if (!cleared) {
-						push(
-							Error(
-								`mountvol did not confirm unmount for ${mount}: ${removal} lastDel=${lastDel}; /L lastList=${lastList}`,
-							),
-						);
-					}
-				} catch (error) {
-					push(error);
-				}
-			}
-			const mountsCleared = points.size === 0;
-			if (!mountsCleared) {
-				// Leave points intact so the remaining mounts and paths stay distinguishable.
-				push(Error(`mount points still tracked after teardown: ${[...points].join(", ")}`));
-				return { mountsCleared, errors };
-			}
-			// Mounts are confirmed gone: former mount directories are local again, safe to clear leftover names.
-			for (const mount of mountSnapshot) {
-				try {
-					for (const name of readdirSync(mount)) rmSync(join(mount, name), { recursive: true, force: true });
-				} catch (error) {
-					push(error);
-				}
-			}
-			// openSync("r+") is a shared read-write open on Windows, not CreateFileW with zero share mode.
-			const fixtureVhdx = `${basename(dirLong)}/${basename(vhdx)}`;
-			const readWriteOpen = (): string => {
-				try {
-					const fd = openSync(vhdx, "r+");
-					closeSync(fd);
-					return "ok";
-				} catch (error: any) {
-					return String(error?.code ?? error);
-				}
-			};
-			const runDetach = (lines: string[]) => {
-				writeFileSync(join(dirLong, "dp.txt"), lines.join("\r\n") + "\r\n");
-				return Bun.spawnSync(["diskpart", "/s", join(dirLong, "dp.txt")]);
-			};
-			const attachedState = (): "true" | "false" | "unknown" => {
-				const ps = [
-					`$p = ${JSON.stringify(vhdx)}`,
-					`try { $i = Get-DiskImage -ImagePath $p -ErrorAction Stop; if ($i.Attached -eq $true) { 'Attached=true' } elseif ($i.Attached -eq $false) { 'Attached=false' } else { 'Attached=unknown' } } catch { 'Attached=unknown' }`,
-				].join("; ");
-				const probe = Bun.spawnSync(["powershell", "-NoProfile", "-Command", ps], {
-					stdout: "pipe",
-					stderr: "ignore",
-					timeout: 5_000,
-				});
-				const line = `${probe.stdout}`
-					.toString()
-					.split(/\r?\n/)
-					.map((l) => l.trim())
-					.find((l) => /^Attached=(?:true|false|unknown)$/.test(l));
-				const v = line?.slice("Attached=".length);
-				return v === "true" || v === "false" ? v : "unknown";
-			};
-			// Detach offlines a volume that mid-test left with no folder mount (/D-only last unmount).
-			// Do not reattach: exit 87 "already detached" can still leave Attached=true. Confirm detach before any delete.
-			let detachConfirmed = false;
-			try {
-				const detach = runDetach([`select vdisk file="${vhdx}"`, "detach vdisk"]);
-				const detachText = `${detach.stdout}${detach.stderr}`.trim();
-				const already = /already detached/i.test(detachText);
-				const detachedOk = detach.exitCode === 0 && /successfully detached/i.test(detachText);
-				const attached = attachedState();
-				console.log(
-					`[S1-teardown] diskpart detach exit=${detach.exitCode} already=${already} attached=${attached} vhdx=${fixtureVhdx} dOnly=${lastMountRemovedWithDOnly}`,
-				);
-				detachConfirmed = detachedOk || attached === "false";
-				if (!detachConfirmed) {
-					push(
-						Error(
-							`diskpart detach not confirmed for ${fixtureVhdx} (exit=${detach.exitCode}; already=${already}; Attached=${attached})` +
-								(lastMountRemovedWithDOnly ? " [last mount was /D-only before detach]" : ""),
-						),
-					);
-					// mountsCleared false blocks the outer fixture recursive delete while the VHDX may still be attached.
-					return { mountsCleared: false, errors };
-				}
-			} catch (error) {
-				push(error);
-				return { mountsCleared: false, errors };
-			}
-			const postDetachOpen = readWriteOpen();
-			console.log(`[S1-teardown] post-detach read-write-open=${postDetachOpen} vhdx=${fixtureVhdx}`);
-			// After mounts are cleared and detach is confirmed, the VDS/AV lock release is retried for a minute;
-			// hosted runners have held it longer than the old 12 s bound. A still-locked file after that is a cleanup failure.
-			try {
-				let firstReadWriteOkAt: number | undefined;
-				for (let attempt = 0; ; attempt++) {
-					const openState = readWriteOpen();
-					if (openState === "ok" && firstReadWriteOkAt === undefined) {
-						firstReadWriteOkAt = Date.now();
-						console.log(`[S1-teardown] read-write-open became ok attempt=${attempt} vhdx=${fixtureVhdx}`);
-					}
-					try {
-						rmSync(vhdx, { force: true });
-						console.log(
-							`[S1-teardown] vhdx rm ok attempt=${attempt} vhdx=${fixtureVhdx} readWriteFirstOk=${firstReadWriteOkAt ?? "never"} postDetachOpen=${postDetachOpen}`,
-						);
-						break;
-					} catch (error: any) {
-						if (error?.code !== "EBUSY") throw error;
-						if (attempt >= 600) {
-							// One-shot redacted probe only: Attached=true|false|unknown plus event id/time.
-							// Do not print Defender/VDS message bodies (public CI). Attached=false alone is not proof of AV.
-							const ps = [
-								`$p = ${JSON.stringify(vhdx)}`,
-								`try { $i = Get-DiskImage -ImagePath $p -ErrorAction Stop; if ($i.Attached -eq $true) { 'Attached=true' } elseif ($i.Attached -eq $false) { 'Attached=false' } else { 'Attached=unknown' } } catch { 'Attached=unknown' }`,
-								`$since = (Get-Date).AddMinutes(-5)`,
-								`try { Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-Windows Defender/Operational'; StartTime=$since} -MaxEvents 5 -ErrorAction Stop | ForEach-Object { 'Defender id=' + $_.Id + ' t=' + $_.TimeCreated.ToUniversalTime().ToString('o') } } catch { 'Defender=none' }`,
-								`try { Get-WinEvent -FilterHashtable @{LogName='System'; ProviderName='Virtual Disk Service'; StartTime=$since} -MaxEvents 5 -ErrorAction Stop | ForEach-Object { 'VDS id=' + $_.Id + ' t=' + $_.TimeCreated.ToUniversalTime().ToString('o') } } catch { 'VDS=none' }`,
-							].join("; ");
-							const probe = Bun.spawnSync(["powershell", "-NoProfile", "-Command", ps], {
-								stdout: "pipe",
-								stderr: "ignore",
-								timeout: 5_000,
-							});
-							const isoUtc = String.raw`\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z`;
-							const allow = new RegExp(
-								`^(Attached=(?:true|false|unknown)|Defender(?: id=\\d+ t=${isoUtc}|none)|VDS(?: id=\\d+ t=${isoUtc}|none))$`,
-							);
-							const lines = `${probe.stdout}`
-								.toString()
-								.split(/\r?\n/)
-								.map((l) => l.trim())
-								.filter((l) => allow.test(l));
-							const attached = lines.find((l) => l.startsWith("Attached="))?.slice("Attached=".length) ?? "unknown";
-							console.log(
-								`[S1-teardown] EBUSY lock probe exit=${probe.exitCode} attached=${attached} lines=${lines.join(" | ")}`,
-							);
-							throw Error(
-								`vhdx still EBUSY after mountvol clear + detach (${fixtureVhdx})` +
-									(lastMountRemovedWithDOnly ? " [last mount was /D-only before detach]" : "") +
-									` [postDetachOpen=${postDetachOpen}; readWriteFirstOk=${firstReadWriteOkAt ?? "never"}; lastReadWrite=${openState}; Attached=${attached}]`,
-							);
-						}
-						Bun.sleepSync(100);
-					}
-				}
-			} catch (error) {
-				push(error);
-				return { mountsCleared: false, errors };
-			}
-			return { mountsCleared, errors };
+			if (errors.length) throw combineErrors(errors, `volume teardown not confirmed for ${fixtureVhdx}`);
 		},
 	};
+	volumes.push(vol);
+	diskpart(`create vdisk file="${vhdx}" maximum=512 type=expandable`, `select vdisk file="${vhdx}"`, "attach vdisk", "create partition primary", `format fs=${fs} quick label=CANDS1`, `assign mount="${at}"`);
+	points.add(at);
+	vol.volume = run(["mountvol", at + "\\", "/L"]).trim();
+	expect(vol.volume).toMatch(/^\\\\\?\\Volume\{[0-9a-f-]+\}\\$/i);
+	return vol;
 }
 
 test.skipIf(!elevated)("S1: a volume mounted in a folder (no drive letter): git's chain is walked on its own volume and across every mount point; a git.exe on or under the workspace never runs, a legitimate one is accepted", async () => {
 	const f = fixture();
 	const saved = process.env.PATH;
-	const v = folderMountedVolume(join(realpathSync.native(f.dir), "vol"));
-	const volumes = [v];
+	const volumes: FolderVolume[] = [];
+	const body: { failed: boolean; error?: unknown } = { failed: false };
 	const fake = (p: string) => {
 		mkdirSync(dirname(p), { recursive: true });
 		writeFileSync(p, "not git (resolution refuses before any spawn)");
 	};
 	try {
+		const v = folderMountedVolume(join(realpathSync.native(f.dir), "vol"), volumes);
 		f.w("a.txt", "a");
 		f.g("add", ".");
 		f.g("commit", "-qm", "a");
@@ -1704,8 +1625,7 @@ test.skipIf(!elevated)("S1: a volume mounted in a folder (no drive letter): git'
 		v.unmount(m3);
 		expect(resolveGit(f.root, P(dirname(legit)))).toBe(legit);
 		// Nested: a second volume mounted in a folder of the first; the walk crosses both mount points.
-		const w2 = folderMountedVolume(join(f.dir, "vol2"), "ntfs", join(v.mnt, "nest"));
-		volumes.push(w2);
+		const w2 = folderMountedVolume(join(f.dir, "vol2"), volumes, "ntfs", join(v.mnt, "nest"));
 		fake(join(w2.mnt, "git.exe"));
 		await rejects(() => resolveGit(v.mnt, P(w2.mnt)), "git-inside-workspace");
 		expect(resolveGit(f.root, P(w2.mnt))).toBe(join(w2.mnt, "git.exe"));
@@ -1717,47 +1637,38 @@ test.skipIf(!elevated)("S1: a volume mounted in a folder (no drive letter): git'
 		rmdirSync(join(f.dir, "jm"));
 		// A volume with no mount point at all, reachable only through a raw junction to its GUID path: its place in
 		// the tree is unknown -> refused (fail closed), never accepted.
-		// keepOnline: /D only so the volume GUID stays resolvable; default last-mount unmount uses /P.
-		w2.unmount(w2.mnt, { keepOnline: true });
+		w2.unmount(w2.mnt);
 		expect(Bun.spawnSync(["cmd", "/c", "mklink", "/J", join(f.dir, "jv"), w2.volume]).exitCode).toBe(0);
 		await rejects(() => resolveGit(f.root, P(join(f.dir, "jv"))), "git-identity-unavailable");
 		rmdirSync(join(f.dir, "jv"));
 		// FAT32 (no reparse points, no file ids): a PATH entry there without git.exe is skipped; a git.exe there
 		// cannot be identified and fails closed.
-		const fat = folderMountedVolume(join(f.dir, "fat"), "fat32");
-		volumes.push(fat);
+		const fat = folderMountedVolume(join(f.dir, "fat"), volumes, "fat32");
 		mkdirSync(join(fat.mnt, "empty"));
 		expect(resolveGit(f.root, P(join(fat.mnt, "empty")))).toBe(host);
 		fake(join(fat.mnt, "g", "git.exe"));
 		await rejects(() => resolveGit(f.root, P(join(fat.mnt, "g"))), "git-identity-unavailable");
-	} finally {
-		process.env.PATH = saved;
-		clearMark();
-		// One volume's cleanup failure must not skip the rest. Skip fixture recursive delete unless every mount is confirmed gone.
-		const cleanupErrors: Error[] = [];
-		let mountsSafe = true;
-		for (const x of [...volumes].reverse()) {
-			try {
-				const result = x.done();
-				cleanupErrors.push(...result.errors);
-				if (!result.mountsCleared) mountsSafe = false;
-			} catch (error) {
-				mountsSafe = false;
-				cleanupErrors.push(error instanceof Error ? error : new Error(String(error)));
-			}
-		}
-		if (mountsSafe) {
-			try {
-				f.done();
-			} catch (error) {
-				cleanupErrors.push(error instanceof Error ? error : new Error(String(error)));
-			}
-		} else {
-			cleanupErrors.push(Error(`skipped fixture recursive delete; unconfirmed mounts remain (left under ${f.dir})`));
-		}
-		if (cleanupErrors.length === 1) throw cleanupErrors[0]!;
-		if (cleanupErrors.length > 1) throw new AggregateError(cleanupErrors, `S1 cleanup failed (${cleanupErrors.length})`);
+	} catch (e) {
+		body.failed = true;
+		body.error = e;
 	}
+	// A PATH restore failure is collected on its own: clearMark() and the volume teardown still run
+	// to the end, and the failure never masks the test body's original error.
+	try {
+		process.env.PATH = saved;
+	} catch (e) {
+		body.error = body.failed ? combineErrors([body.error, e], "test failed and PATH restore also failed") : e;
+		body.failed = true;
+	}
+	try {
+		clearMark();
+	} catch (e) {
+		// Volume teardown must still run, and a clearMark failure joins the reported errors
+		// instead of masking the test body's original failure.
+		body.error = body.failed ? combineErrors([body.error, e], "test failed and clearMark also failed") : e;
+		body.failed = true;
+	}
+	teardownVolumes(volumes, () => f.done(), body);
 }, 180_000);
 
 test.skipIf(!win)("S1/O1/O2: a reparse point of unknown type refuses; a link to an unreachable share is skipped without network I/O; DefineDosDevice redirections are not trusted", async () => {

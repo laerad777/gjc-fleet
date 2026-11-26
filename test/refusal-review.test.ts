@@ -8,7 +8,7 @@ import { join, resolve } from "node:path";
 import { repositoryFixture } from "./fixtures/coordinator";
 import { headroom } from "./admission-fixture";
 import * as helperModule from "../src/node";
-import { NodeReplyError, oneShot } from "../src/node";
+import { NodeReplyError, oneShot, nodeErrorLogSupportsNoFollow } from "../src/node";
 import { prepareWorkspace, sha256 } from "../src/workspace";
 import { Fleet } from "../src/fleet";
 import { FleetStore } from "../src/store";
@@ -151,11 +151,23 @@ test("R1: executed collection whose reply cannot be encoded is executed_reply_fa
 		certainty: "unknown",
 		correlationId: expect.stringMatching(/^[a-f0-9-]{36}$/),
 	});
-	const log = await readFile(resolve(import.meta.dir, "../src/.node-errors.log"), "utf8");
-	expect(log).toContain(
-		JSON.stringify({ correlationId: r.reply.correlationId, error: "executed_reply_failed" }),
-	);
-	clean(log);
+	// Without O_NOFOLLOW (Windows), file logging is fail-closed; assert stderr fallback instead.
+	if (nodeErrorLogSupportsNoFollow) {
+		const log = await readFile(resolve(import.meta.dir, "../src/.node-errors.log"), "utf8");
+		expect(log).toContain(
+			JSON.stringify({ correlationId: r.reply.correlationId, error: "executed_reply_failed" }),
+		);
+		clean(log);
+	} else {
+		expect(r.reply.correlationId).toMatch(/^[a-f0-9-]{36}$/);
+		const logLine = JSON.stringify({
+			correlationId: r.reply.correlationId,
+			error: "executed_reply_failed",
+		});
+		expect(r.stderr.split(/\r?\n/).filter((line) => line.length > 0)).toContain(logLine);
+		expect(r.stderr).not.toContain(f.dir);
+		clean(r.stderr);
+	}
 	// The same answer through the caller is an unknown outcome, not a refusal.
 	const helper = join(f.dir, "replay.ts");
 	await writeFile(helper, `console.log(${JSON.stringify(r.stdout.trim())});process.exitCode=1;`);

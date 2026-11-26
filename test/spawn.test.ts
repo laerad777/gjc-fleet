@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeAll, expect, spyOn, test } from "bun:test";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { GIT_HARDENING, isolatedGitEnvironment, NULL_DEVICE, resolveProgram, spawnGit, spawnGitSync, spawnTrusted, trustedPathValue, UntrustedProgramError } from "../src/spawn";
+import { FLEET_GIT_NAME, GIT_HARDENING, isolatedGitEnvironment, NULL_DEVICE, resolveProgram, spawnGit, spawnGitSync, spawnTrusted, trustedPathValue, UntrustedProgramError } from "../src/spawn";
 import { runGit } from "../src/workspace";
 import { repositoryFixture } from "./fixtures/coordinator";
 import { planter, type Planter } from "./support/planted";
@@ -11,6 +11,8 @@ const WIN = process.platform === "win32";
 const DELIM = WIN ? ";" : ":";
 const realGit = Bun.which("git")!;
 const gitDir = dirname(realGit);
+/** Fleet Git path: `git.exe` on Windows; same as `realGit` elsewhere. */
+const fleetGit = resolveProgram(FLEET_GIT_NAME);
 let T: string;
 let P: Planter;
 const savedPath = process.env.PATH;
@@ -244,8 +246,8 @@ test("spawnGit: absolute git, cwd outside the repository, -C <repo>, hardening f
 		delete process.env.GIT_DIR;
 		delete process.env.GIT_CONFIG_PARAMETERS;
 	}
-	expect(seen!.cmd).toEqual([realGit, ...GIT_HARDENING, "-C", f.repo, "rev-parse", "HEAD"]);
-	expect(seen!.options.cwd).toBe(gitDir);
+	expect(seen!.cmd).toEqual([fleetGit, ...GIT_HARDENING, "-C", f.repo, "rev-parse", "HEAD"]);
+	expect(seen!.options.cwd).toBe(dirname(fleetGit));
 	expect(seen!.options.cwd.toLowerCase().startsWith(f.dir.toLowerCase())).toBe(false);
 	const env = seen!.options.env;
 	expect(env).toEqual(isolatedGitEnvironment(f.repo));
@@ -308,8 +310,8 @@ test("spawnGitSync: absolute git, cwd outside the repository, -C <repo>, hardeni
 	} finally {
 		spy.mockRestore();
 	}
-	expect(seen!.cmd).toEqual([realGit, ...GIT_HARDENING, "-C", f.repo, "rev-parse", "HEAD"]);
-	expect(seen!.options.cwd).toBe(gitDir);
+	expect(seen!.cmd).toEqual([fleetGit, ...GIT_HARDENING, "-C", f.repo, "rev-parse", "HEAD"]);
+	expect(seen!.options.cwd).toBe(dirname(fleetGit));
 	expect(seen!.options.cwd.toLowerCase().startsWith(f.dir.toLowerCase())).toBe(false);
 	expect(seen!.options.env).toEqual(isolatedGitEnvironment(f.repo));
 });

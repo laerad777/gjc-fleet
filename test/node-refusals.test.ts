@@ -195,13 +195,42 @@ test("actual helper: git failure before any effect is a proven refusal; after pr
 });
 test("actual helper: unknown exception has bounded correlation and local log", async () => {
 	const f = await fixture();
-	const reply = await refusal(
-		f.call({ action: "test", identity: f.identity, argv: [f.dir] }),
-		"internal",
-		"unknown",
-	);
+	const request = { action: "test", identity: f.identity, argv: [f.dir] };
+	// Caller assertions stay on every platform: error type, certainty, fixture marker hidden.
+	const reply = await refusal(f.call(request), "internal", "unknown");
 	const correlationId = "correlationId" in reply ? reply.correlationId : undefined;
 	expect(correlationId).toMatch(/^[a-f0-9-]{36}$/);
+	expect(JSON.stringify(reply)).not.toContain("node-refusal-");
+	// Without O_NOFOLLOW (Windows), file logging is fail-closed. stderr must carry the
+	// correlation id and error code together, not the id alone.
+	if (!nodeErrorLogSupportsNoFollow) {
+		const child = Bun.spawn([process.execPath, ...f.args], {
+			stdin: "pipe",
+			stdout: "pipe",
+			stderr: "pipe",
+		});
+		child.stdin.write(JSON.stringify(request));
+		child.stdin.end();
+		const [stdout, stderr, exit] = await Promise.all([
+			new Response(child.stdout).text(),
+			new Response(child.stderr).text(),
+			child.exited,
+		]);
+		expect(exit).toBe(1);
+		const helperReply = JSON.parse(stdout.trim());
+		expect(helperReply).toMatchObject({
+			ok: false,
+			error: "internal",
+			certainty: "unknown",
+		});
+		expect(helperReply.correlationId).toMatch(/^[a-f0-9-]{36}$/);
+		expect(JSON.stringify(helperReply)).not.toContain("node-refusal-");
+		const logLine = JSON.stringify({ correlationId: helperReply.correlationId, error: "internal" });
+		expect(stderr.split(/\r?\n/).filter((line) => line.length > 0)).toContain(logLine);
+		expect(stderr).not.toContain(f.dir);
+		expect(stderr).not.toContain("node-refusal-");
+		return;
+	}
 	const log = await readFile(resolve(import.meta.dir, "../src/.node-errors.log"), "utf8");
 	expect(log).toContain(correlationId!);
 	expect(log).not.toContain(f.dir);
