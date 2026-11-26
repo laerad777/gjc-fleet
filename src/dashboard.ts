@@ -1,5 +1,5 @@
 import { type HeldCharge, type ResourceSample, resourceReasons, unmeasuredTasks } from "./admission";
-import type { AuditEvent, DispositionKind, LateReceipt, NodeConfig, Phase, ReceiptlessSettlement, TaskProgress, TaskRecord, TaskState } from "./contracts";
+import { SELECTED_NODE_REASONS, type AuditEvent, type DispositionKind, type LateReceipt, type NodeConfig, type Phase, type ReceiptlessSettlement, type SelectedNodeReason, type TaskProgress, type TaskRecord, type TaskState } from "./contracts";
 import { DASHBOARD_HTML } from "./dashboard-page";
 import { EXECUTION_FAILURE_REPORTED } from "./execution";
 import { executionOutcome, exportReviewPending, placementView, reasonClass, shownPlacement } from "./core";
@@ -9,6 +9,7 @@ import type { FleetStore, ResourceReturnStatus } from "./store";
 import type { NodeHealthHistory } from "./node-health";
 import { type DeliverableView, withDeliverables } from "./work-unit";
 import { spawnTrusted } from "./spawn";
+import { dashboardTaskAttention, type DashboardTaskAttention, type DashboardSshEvidence, dashboardSshEvidence, dashboardSshLinks, dashboardSshRoute } from "./dashboard-map-view";
 import { publicCommandError, publicExitError, publicLateReceipt, publicSettlement } from "./dashboard-poll-view";
 
 declare const Bun: any;
@@ -143,6 +144,8 @@ export interface DashboardTask {
 	title: string;
 	caller: string;
 	phase: Phase;
+	/** Operator-facing state, independent of running/reserved capacity counts. */
+	attention?: DashboardTaskAttention;
 	nodeId?: string;
 	held: boolean;
 	executionTerminal: boolean;
@@ -183,6 +186,8 @@ export interface DashboardTask {
 		outcome?: string;
 		nodeId?: string;
 		globalFull?: boolean;
+		/** Only on task detail: an allowlisted code recorded by the last selection. */
+		reason?: SelectedNodeReason | "no_eligible_node" | "global_capacity";
 		exclusions: Array<{ nodeId: string; reasons: string[] }>;
 	};
 	/**
@@ -430,6 +435,8 @@ export interface DashboardState {
 	};
 	gjcRuntime: GjcRuntimeStatus;
 	nodes: DashboardNode[];
+	/** Observations of existing hub-initiated SSH resource streams only. */
+	sshLinks?: ReturnType<typeof dashboardSshLinks>;
 	tasks: DashboardTask[];
 	archivedTasks: DashboardTask[];
 	/** The `fleet daemon` owner lease and its published status; absent when no daemon row exists. */
@@ -893,11 +900,21 @@ function eventDetail(event: AuditEvent): string | undefined {
 /** Consecutive noise rows of these kinds collapse to one timeline entry with a count. */
 const COLLAPSE_TIMELINE = new Set(["observation", "abandoned_poll", "stale_poll_failure"]);
 
+/** Never forward arbitrary audit text or explain a legacy choice from its input or today's registry. */
+function publicSelectionReason(data: Record<string, unknown>, assignedNode: string | undefined) {
+	if (data.outcome === "selected" && assignedNode !== undefined && data.nodeId === assignedNode)
+		return SELECTED_NODE_REASONS.find((code) => code === data.reason);
+	if (data.outcome === "rejected" && assignedNode === undefined && data.nodeId === undefined &&
+		(data.reason === "no_eligible_node" || data.reason === "global_capacity"))
+		return data.reason;
+	return undefined;
+}
+
 function projectTask(
 	task: TaskState,
 	events: AuditEvent[],
 	resourceReturn: ResourceReturnStatus | undefined,
-	options?: { timelineLimit?: number | null },
+	options?: { timelineLimit?: number | null; includeSelectionReason?: boolean },
 ): DashboardTask {
 	const placement = placementView(task);
 	const stages: Array<string | null> = PIPELINE_STAGES.map(() => null);
@@ -913,10 +930,12 @@ function projectTask(
 		}
 		if (event.kind === "selection") {
 			const data = (event.data ?? {}) as Record<string, any>;
+			const reason = options?.includeSelectionReason ? publicSelectionReason(data, task.nodeId) : undefined;
 			selection = {
 				outcome: data.outcome,
 				nodeId: data.nodeId,
 				globalFull: data.globalFull === true,
+				...(reason !== undefined ? { reason } : {}),
 				exclusions: Array.isArray(data.exclusions)
 					? data.exclusions.map((x: any) => ({ nodeId: String(x.nodeId), reasons: Array.isArray(x.reasons) ? x.reasons.map(String) : [] }))
 					: [],
@@ -944,6 +963,13 @@ function projectTask(
 		title: headline(task.input.prompt),
 		caller: task.input.caller,
 		phase: task.phase,
+		attention: dashboardTaskAttention(task.phase, {
+			executionTerminal: task.result?.executionTerminal === true,
+			exportReview: exportReviewPending(task.result),
+			receiptConflict: !!task.result?.lateReceipt && !task.result.lateReceipt.acceptance,
+			resultSaved: stageIndex >= RESULT_STAGE_INDEX,
+			unplaceable: placement?.verdict === "unplaceable",
+		}),
 		nodeId: task.nodeId,
 		held: task.held,
 		executionTerminal: task.result?.executionTerminal === true,
@@ -994,7 +1020,7 @@ export function getDashboardTask(store: FleetStore, taskId: string): DashboardTa
 	const task = store.taskState(taskId);
 	if (!task) return null;
 	const returns = store.resourceReturnStatuses([task]);
-	return projectTask(task, store.events(taskId), returns.get(taskId), { timelineLimit: null });
+	return projectTask(task, store.events(taskId), returns.get(taskId), { timelineLimit: null, includeSelectionReason: true });
 }
 
 export function getDashboardState(
@@ -1003,6 +1029,7 @@ export function getDashboardState(
 	probes: ReadonlyMap<string, NodeProbe> = new Map(),
 	resources?: (nodeId: string) => NodeResources | undefined,
 	health?: NodeHealthHistory,
+	sshEvidence?: (node: NodeConfig) => DashboardSshEvidence | undefined,
 ): DashboardState {
 	// Switch off: nothing is observed or recorded, so nothing is shown; the state equals the state
 	// without node health (no nodeHealth, no nodes[].health; review 09e80a06 F1).
@@ -1151,6 +1178,7 @@ export function getDashboardState(
 		},
 		gjcRuntime: gjcStatus ?? { installed: false, lastCheckedAt: new Date().toISOString() },
 		nodes,
+		sshLinks: dashboardSshLinks(allNodes, sshEvidence),
 		tasks: listedTasks,
 		archivedTasks: archivedListed,
 		...(daemon ? { daemon } : {}),
@@ -1308,6 +1336,8 @@ export function streamCommand(node: NodeConfig): { argv: string[]; script?: stri
 }
 
 export interface ResourceStreams {
+	/** No new traffic: evidence from the existing SSH-backed resource stream. */
+	sshEvidence(node: NodeConfig): DashboardSshEvidence | undefined;
 	/** Latest measurement per node; a stalled or dead stream reports ok:false instead of an old value. */
 	latest(nodeId: string): NodeResources | undefined;
 	stop(): void;
@@ -1329,6 +1359,7 @@ export function startResourceStreams(
 		proc?: any;
 		resources?: NodeResources;
 		at: number;
+		ssh?: { checkedAt: string; receivedAt: number; route: string };
 		failures: number;
 		timer?: ReturnType<typeof setTimeout>;
 		/** Ends everything the current launch started: ticker, pipes, readers and the process. */
@@ -1348,6 +1379,7 @@ export function startResourceStreams(
 		const node = nodes().find((candidate) => candidate.id === nodeId);
 		if (stopped || !entry || !node) return;
 		const command = commandFor(node);
+		const sshRoute = options.command === undefined && command?.argv[0] === "ssh" ? dashboardSshRoute(node) : undefined;
 		if (!command) {
 			publish(nodeId, entry, { ok: false, error: "resource_stream_refused" });
 			return;
@@ -1434,6 +1466,7 @@ export function startResourceStreams(
 			const decoder = new TextDecoder();
 			try {
 				for (let read = await stdoutReader.read(); !read.done; read = await stdoutReader.read()) {
+					if (stopped || entries.get(nodeId) !== entry || entry.proc !== proc) return;
 					lastOutput = Date.now();
 					buffer += decoder.decode(read.value, { stream: true });
 					let newline = buffer.indexOf("\n");
@@ -1448,6 +1481,7 @@ export function startResourceStreams(
 						awaiting = false;
 						sampled = true;
 						entry.failures = 0;
+						if (sshRoute !== undefined && parsed.resources.ok) entry.ssh = { checkedAt: new Date().toISOString(), receivedAt: performance.now(), route: sshRoute };
 						publish(nodeId, entry, parsed.resources);
 					}
 				}
@@ -1509,6 +1543,10 @@ export function startResourceStreams(
 	process.once("SIGTERM", onSignal);
 
 	return {
+		sshEvidence(node) {
+			const entry = entries.get(node.id);
+			return dashboardSshEvidence(node, entry?.ssh, entry?.resources?.ok === true, performance.now(), SAMPLE_STALE_MS);
+		},
 		latest(nodeId) {
 			const entry = entries.get(nodeId);
 			if (!entry?.resources) return undefined;
@@ -1659,7 +1697,7 @@ export function startDashboardServer(
 	};
 	// A read-only view (ui --read-only) only displays; it never probes or records.
 	if (live && health && !health.readOnly) healthTimer = setTimeout(observeHealth, 0);
-	const snapshot = () => getDashboardState(store, runtime(), probes(), streams ? (nodeId) => streams.latest(nodeId) : undefined, health);
+	const snapshot = () => getDashboardState(store, runtime(), probes(), streams ? (nodeId) => streams.latest(nodeId) : undefined, health, streams?.sshEvidence);
 	/** Compare without generatedAt: that stamp alone must not force a 2s republish. */
 	const pushKey = (state: DashboardState) => {
 		const { generatedAt: _generatedAt, ...rest } = state;
