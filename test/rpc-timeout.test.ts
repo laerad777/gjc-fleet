@@ -22,8 +22,19 @@ const coordinator = fileURLToPath(new URL("./fixtures/coordinator.ts", import.me
 const helper = fileURLToPath(new URL("../src/placement-preflight.ts", import.meta.url));
 const guard = installDiagnosticGuard(FleetStore);
 const dirs: string[] = [];
+const openStores = new Set<FleetStore>();
+function openStore(path: string) {
+	const store = new FleetStore(path);
+	openStores.add(store);
+	return store;
+}
+function closeStore(store: FleetStore) {
+	store.close();
+	openStores.delete(store);
+}
 afterAll(async () => {
 	guard.uninstall();
+	for (const store of openStores) closeStore(store);
 	for (const d of dirs.splice(0)) await rm(d, { recursive: true, force: true });
 });
 const SECOND = 1000;
@@ -60,15 +71,15 @@ async function fixture(options: Options) {
 		workspaceTransport: { command: process.execPath, args: [helper, config] },
 	};
 	const db = join(f.dir, "fleet.sqlite");
-	let store = new FleetStore(db);
+	let store = openStore(db);
 	if (options.legacyRow) {
 		// A node row as an earlier version wrote it: no transport.timeoutMs, written straight to the table.
 		expect(node.transport.timeoutMs).toBeUndefined();
-		store.close();
+		closeStore(store);
 		const raw = new Database(db);
 		raw.query("INSERT INTO nodes(id,data) VALUES (?,?)").run(node.id, canonicalJson(node));
 		raw.close();
-		store = new FleetStore(db);
+		store = openStore(db);
 	} else store.putNode(node);
 	const fleet = new Fleet(store);
 	const input: TaskInput = { schemaVersion: 1, key: "rpc-timeout", caller: "rpc-timeout-test", repoId: "fixture", baseCommit: f.baseCommit, prompt: "controlled prompt", required: {} };
@@ -101,14 +112,40 @@ async function sendAnsweredWithin(f: Fx) {
 	expect(task.reason).toBeUndefined();
 	expect(f.unknownEvents()).toEqual([]);
 	expect(await f.calls()).toEqual({ start: 1, send: 1, read: 0 });
-	f.store.close();
+	closeStore(f.store);
 	return elapsed;
 }
 /** The send timed out after delivery: unknown, the limit in the diagnostic, and never re-sent. */
-async function sendTimedOut(f: Fx, timeoutMs: number, hangMs: number) {
+async function sendTimedOut(f: Fx, timeoutMs: number, hangMs: number, measurePrompt = false) {
+	// For the strict 5 s cases, measure the prompt rather than preflight and session creation.
+	// Use the real store methods and a monotonic clock, without polling or changing the fixture.
+	let promptClaimedAt: number | undefined;
+	let unknownRecordedAt: number | undefined;
+	const claim = f.store.claimOperation.bind(f.store);
+	const markUnknown = f.store.markUnknown.bind(f.store);
+	if (measurePrompt) {
+		f.store.claimOperation = (...args) => {
+			const intent = claim(...args);
+			if (intent && args[0] === f.id && args[1] === "prompt") promptClaimedAt = performance.now();
+			return intent;
+		};
+		f.store.markUnknown = (...args) => {
+			const task = markUnknown(...args);
+			if (args[0] === f.id && args[1] === "transport_timeout" && args[3]?.source === "Fleet.start.prompt")
+				unknownRecordedAt = performance.now();
+			return task;
+		};
+	}
 	const started = performance.now();
 	const task = await f.fleet.start(f.id);
 	const elapsed = performance.now() - started;
+	let promptElapsed = elapsed;
+	if (measurePrompt) {
+		expect(promptClaimedAt).toBeDefined();
+		expect(unknownRecordedAt).toBeDefined();
+		promptElapsed = unknownRecordedAt! - promptClaimedAt!;
+		expect(promptElapsed).toBeGreaterThanOrEqual(timeoutMs);
+	}
 	expect(task).toMatchObject({ phase: "blocked_unknown", reason: "transport_timeout", sessionId: "controlled-session", held: true });
 	expect(task.turnId).toBeUndefined();
 	const events = f.unknownEvents();
@@ -118,13 +155,13 @@ async function sendTimedOut(f: Fx, timeoutMs: number, hangMs: number) {
 	// The prompt was delivered (the Coordinator persisted it before its late answer).
 	expect(await f.calls()).toEqual({ start: 1, send: 1, read: 0 });
 	// Outlive the controlled answer, then start again: the uncertain send is still never re-sent.
-	await Bun.sleep(Math.max(0, hangMs - elapsed) + 300);
+	await Bun.sleep(Math.max(0, hangMs - promptElapsed) + 300);
 	const again = await f.fleet.start(f.id).catch((error) => error);
 	expect(again instanceof FleetError || again?.phase === "blocked_unknown").toBe(true);
 	expect(f.store.task(f.id)).toMatchObject({ phase: "blocked_unknown", held: true });
 	expect(await f.calls()).toEqual({ start: 1, send: 1, read: 0 });
-	f.store.close();
-	return elapsed;
+	closeStore(f.store);
+	return promptElapsed;
 }
 
 // ---- defaults: just under and just over, posix and win32 ------------------------------------------------
@@ -167,7 +204,7 @@ test.concurrent("win32 node with transport.timeoutMs 5000: answered 1 s under is
 	const under = await fixture({ os: "win32", timeoutMs: 5000, state: { hang: "send", hangMs: 4000 } });
 	await sendAnsweredWithin(under);
 	const over = await fixture({ os: "win32", timeoutMs: 5000, state: { hang: "send", hangMs: 6000 } });
-	const elapsed = await sendTimedOut(over, 5000, 6000);
+	const elapsed = await sendTimedOut(over, 5000, 6000, true);
 	expect(elapsed).toBeLessThan(6000);
 }, 60 * SECOND);
 test.concurrent("posix node with transport.timeoutMs 45000: a send answered at 31 s (over the posix default) is active", async () => {
@@ -182,7 +219,7 @@ test.concurrent("create is bounded by the same per-node limit: a create answered
 	await Bun.sleep(1500);
 	await f.fleet.start(f.id).catch(() => undefined);
 	expect(await f.calls()).toEqual({ start: 1, send: 0, read: 0 });
-	f.store.close();
+	closeStore(f.store);
 }, 60 * SECOND);
 test.concurrent("exactly at the limit (answer delayed by exactly transport.timeoutMs): one consistent outcome, one send, never re-sent", async () => {
 	const f = await fixture({ os: "posix", timeoutMs: 5000, state: { hang: "send", hangMs: 5000 } });
@@ -197,7 +234,7 @@ test.concurrent("exactly at the limit (answer delayed by exactly transport.timeo
 	await Bun.sleep(1000);
 	await f.fleet.start(f.id).catch(() => undefined);
 	expect(await f.calls()).toEqual({ start: 1, send: 1, read: 0 });
-	f.store.close();
+	closeStore(f.store);
 }, 60 * SECOND);
 
 // ---- reads use the observation limit max(transport.timeoutMs, OS floor); effects keep transport.timeoutMs ----
@@ -206,7 +243,7 @@ test.concurrent("strict inspect: read_turn answered under the observation limit 
 	const observation = nodeObservationTimeoutMs(f.node);
 	expect(observation).toBe(posix);
 	// The same node configuration with a send that answers 1 s over 5000: unknown at 5000, never re-sent.
-	const sendOver = fixture({ os: "posix", timeoutMs: 5000, state: { hang: "send", hangMs: 6000 } }).then((over) => sendTimedOut(over, 5000, 6000));
+	const sendOver = fixture({ os: "posix", timeoutMs: 5000, state: { hang: "send", hangMs: 6000 } }).then((over) => sendTimedOut(over, 5000, 6000, true));
 	await f.fleet.start(f.id);
 	await f.change({ hang: "read", hangMs: 4000 });
 	expect((await f.fleet.inspect(f.id)).task).toMatchObject({ phase: "active" });
@@ -226,7 +263,7 @@ test.concurrent("strict inspect: read_turn answered under the observation limit 
 	expect(await f.calls()).toEqual({ start: 1, send: 1, read: 3 });
 	expect(await sendOver).toBeLessThan(6000);
 	await Bun.sleep(1500);
-	f.store.close();
+	closeStore(f.store);
 }, 90 * SECOND);
 
 // ---- explicit caller deadlines keep their meaning ---------------------------------------------------------
