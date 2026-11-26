@@ -807,7 +807,10 @@ async function settleByA(w: World, kind: string, defer: boolean) {
 	expect((await w.poll(0)).task.result?.executionTerminal).not.toBe(true);
 	const settled = (await w.poll(INTERVAL)).task;
 	if (settled.phase === "blocked_unknown") {
-		const diagnostic = normalizeDiagnostic(w.events("unknown").at(-1)?.data?.failureDiagnostic);
+		const data = w.events("unknown").at(-1)?.data;
+		const diagnostic = normalizeDiagnostic(
+			data && typeof data === "object" && !Array.isArray(data) ? data.failureDiagnostic : undefined,
+		);
 		if (diagnostic) {
 			// Fixed Fleet diagnostic fields only: never dump audit events or transport output.
 			console.error("settleByA: second poll failed", diagnostic.source, diagnostic.phase, diagnostic.code);
