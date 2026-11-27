@@ -314,8 +314,8 @@ svg#links{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 #sheet .lc:focus-visible{outline:2px solid var(--ac);outline-offset:2px;border-radius:8px}
 @media(pointer:coarse){.hit{stroke-width:24px}}
 /* legend and hint share one wrapping footer, so a narrow window stacks them instead of overlapping */
-.foot{position:absolute;left:44px;right:44px;bottom:22px;display:flex;flex-wrap:wrap;align-items:flex-end;z-index:2;pointer-events:none}
-.foot{justify-content:space-between;gap:8px 24px}
+.foot{position:absolute;left:44px;right:44px;bottom:22px;z-index:2;pointer-events:none;
+	display:flex;flex-wrap:wrap;align-items:flex-end;justify-content:space-between;gap:8px 24px}
 .foot>*{pointer-events:auto}
 .hint{margin-left:auto;text-align:right;font-family:var(--disp);font-style:italic;font-size:14px;color:var(--mut);z-index:2}
 .lg{font-size:11px;color:var(--mut);letter-spacing:.1em;text-transform:uppercase;display:flex;flex-direction:column;gap:9px}
