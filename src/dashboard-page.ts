@@ -185,7 +185,8 @@ header .rt .live.retry{color:var(--warn)}
 #world.sc .bl.bad{top:14%;left:10%;transform-origin:0 0;transform:scale(var(--bs,1)) translate(-50%,-50%)}
 #world.sc .bl.wait{bottom:14%;right:10%;transform-origin:100% 100%;transform:scale(var(--bs,1)) translate(50%,50%)}
 #world.sc .nm{top:calc(86.4% + 2px)}
-#world.sc .nm b{font-size:var(--nf,15px);max-width:var(--lw,200px);overflow:hidden;text-overflow:ellipsis}
+/* +10px+.3em: the arch icon footprint (svg width + its margin) shares the name's width cap */
+#world.sc .nm b{font-size:var(--nf,15px);max-width:calc(var(--lw,200px) + 10px + .3em);overflow:hidden;text-overflow:ellipsis}
 #world.sc .nm span{font-size:var(--nf2,11px);letter-spacing:.02em;display:none}
 #world.sc .nchips{margin-top:2px;gap:3px}
 #world.sc .node:hover .nm span,#world.sc .node:focus-within .nm span{display:inline}
@@ -1127,7 +1128,8 @@ header .lease{margin-top:5px;padding:6px 8px}
 		var lc={},uni=null,umax=0;
 		nodes.forEach(function(v){var l=v.status.level;lc[l]=(lc[l]||0)+1});
 		for(var ul in lc)if(lc[ul]>umax){umax=lc[ul];uni=ul}else if(lc[ul]===umax)uni=null;
-		return {nodes:nodes,queue:q,down:down,overall:overall,lease:lease,fresh:fresh,needs:needs,running:Math.max(0,Number(overall.confirmedRunning)||0),ssh:ssh,uni:uni};
+		return {nodes:nodes,queue:q,down:down,overall:overall,lease:lease,fresh:fresh,needs:needs,
+			running:Math.max(0,Number(overall.confirmedRunning)||0),ssh:ssh,uni:uni};
 	}
 	/* ---- groups: when labels cannot stay readable at fit, healthy nodes of one OS and arch collapse into a single bubble ---- */
 	var RANK={ok:0,unk:1,wait:2};
@@ -1606,8 +1608,9 @@ header .lease{margin-top:5px;padding:6px 8px}
 						dirty=true;boxPush(a,b,fa,fb,M);
 					}
 					for(var i=0;i<N;i++){collide(B[i],HB,1,0);for(var j=i+1;j<N;j++)collide(B[i],B[j],.5,.5)}
-					if(!dirty)break;
+					/* The canvas clamp is the keep-on-screen promise, so it runs on the clean pass that breaks the loop too. */
 					B.forEach(function(b){b.x=Math.min(R.x1-b.hw,Math.max(R.x0+b.hw,b.x));b.y=Math.min(R.y1-b.dn,Math.max(R.y0+b.up,b.y))});
+					if(!dirty)break;
 				}
 				ok=true;
 				for(var i2=0;i2<N&&ok;i2++){
@@ -2020,7 +2023,10 @@ header .lease{margin-top:5px;padding:6px 8px}
 		if(v.raw.enabled===false)st='Paused'+(v.status.level==='healthy'?'':' · '+st);
 		else if(v.raw.draining===true)st='Draining'+(v.status.level==='healthy'?'':' · '+st);
 		var col=v.vis==='down'||v.vis==='fail'?'#c4303f':v.status.level==='degraded'?'#8a5206':'#3d3dc8';
-		return '<h3>'+esc(v.id)+'<em style="color:'+col+'">'+esc(st)+'</em></h3><div class="kv"><span>OS</span><b>'+esc(OSN[v.os]||v.os)+' '+esc(v.arch)+'</b><span>Marked active</span><b>'+v.raw.currentLoad+'</b>'+(v.risk.count?'<span>Tasks at risk</span><b>'+v.risk.count+'</b>':'')+(r&&r.ok&&r.cpuPct!=null?'<span>CPU</span><b>'+Math.round(r.cpuPct)+'%</b>':'')+'</div>'+
+		return '<h3>'+esc(v.id)+'<em style="color:'+col+'">'+esc(st)+'</em></h3>'+
+			'<div class="kv"><span>OS</span><b>'+esc(OSN[v.os]||v.os)+' '+esc(v.arch)+'</b>'+
+			'<span>Marked active</span><b>'+v.raw.currentLoad+'</b>'+(v.risk.count?'<span>Tasks at risk</span><b>'+v.risk.count+'</b>':'')+
+			(r&&r.ok&&r.cpuPct!=null?'<span>CPU</span><b>'+Math.round(r.cpuPct)+'%</b>':'')+'</div>'+
 			(r&&r.ok&&r.cpuPct!=null?'<div class="ld"><i style="width:'+Math.min(100,r.cpuPct)+'%"></i></div>':'')+
 			'<div class="tt">'+(ts.length?ts.slice(0,3).map(function(t){var p=phaseLabel(t);return '<div><b>'+esc(t.title||t.key)+'</b><span>'+esc(p[1])+'</span></div>'}).join('')+(ts.length>3?'<div class="none">+'+(ts.length-3)+' more</div>':''):'<div class="none">Nothing assigned</div>')+'</div>'+sshRows(v);
 	}
