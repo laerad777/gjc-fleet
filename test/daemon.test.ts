@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { rm } from "node:fs/promises";
@@ -88,9 +88,15 @@ test("fairness: a node at 90 s per call (scaled 1:100 to 900 ms) never delays ot
 	const stats = fakeCoordinator(f.fleet, (nodeId) => (nodeId === "slow-win" ? 900 : 20));
 	const d = daemon(f.fleet);
 	const started = Date.now();
-	await runFor(d, 3_300);
-	const elapsed = Date.now() - started;
+	const running = d.run();
+	cleanups.push(async () => { d.stop(); await running.catch(() => {}); });
 	const reads = (nodeId: keyof typeof ids) => ids[nodeId].map((id) => stats.reads.get(`session-${id}`) ?? 0);
+	await until(() => Math.min(...reads("slow-win")) >= 1 && Math.min(...reads("fast-a")) >= 10 && Math.min(...reads("fast-b")) >= 10, 20_000);
+	const elapsed = Date.now() - started;
+	// Without per-node fairness the slow 900 ms calls hold the pass; fast nodes then miss this bound.
+	expect(elapsed).toBeLessThan(5_000);
+	d.stop();
+	await running;
 	// One in-flight call per node and one observation per task at any time.
 	for (const nodeId of Object.keys(ids)) expect(stats.maxNodeConcurrency.get(nodeId)).toBe(1);
 	expect(stats.maxTaskConcurrency).toBe(1);
@@ -109,7 +115,7 @@ test("fairness: a node at 90 s per call (scaled 1:100 to 900 ms) never delays ot
 	// Graceful stop let the slow in-flight call finish; nothing left unknown or abandoned.
 	for (const id of Object.values(ids).flat()) expect(f.store.task(id)!.phase).toBe("active");
 	expect(f.store.daemonStatus()).toBeUndefined();
-}, 20_000);
+}, 30_000);
 
 test("per-node budget and backoff: a failing node backs off, its own tasks are not marked unknown, others continue", async () => {
 	const f = fixture(["good", "bad"]);
@@ -124,7 +130,14 @@ test("per-node budget and backoff: a failing node backs off, its own tasks are n
 		return connect(n, required);
 	};
 	const d = daemon(f.fleet, { backoffMs: 200, backoffMaxMs: 400, nodeGapMs: (n) => (n.id === "good" ? 10 : 0) });
-	await runFor(d, 1_000);
+	const running = d.run();
+	cleanups.push(async () => { d.stop(); await running.catch(() => {}); });
+	await until(() => badCalls >= 2 && (stats.reads.get(`session-${good}`) ?? 0) > 10, 10_000);
+	// Keep observing after the second bad call: without backoff, ~200 ms cycles would push past 5 in 800 ms.
+	const sinceSecondBad = Date.now();
+	await until(() => Date.now() - sinceSecondBad >= 800, 2_000);
+	d.stop();
+	await running;
 	expect(badCalls).toBeGreaterThanOrEqual(2);
 	expect(badCalls).toBeLessThanOrEqual(5);
 	expect(f.store.task(bad)!.phase).toBe(badBefore.phase);
@@ -164,7 +177,21 @@ test("repeated OBSERVATION_UNAVAILABLE stretches the task interval, notes operat
 			if (row.event === "noted" || row.event === "observation_failed") events.push({ event: String(row.event), note: row.note !== undefined ? String(row.note) : undefined });
 		},
 	});
-	await runFor(d, 900);
+	const running = d.run();
+	cleanups.push(async () => { d.stop(); await running.catch(() => {}); });
+	await until(() => {
+		const abandoned = f.store.events(id).filter((e) => e.kind === "abandoned_poll");
+		const notes = f.store.events(id).filter((e) => e.kind === "daemon_note");
+		return abandoned.length > 2 && notes.some((e) => (e.data as any).note === "observation_repeated_failure_operator_recovery_required");
+	}, 10_000);
+	const abandonedAtTrigger = f.store.events(id).filter((e) => e.kind === "abandoned_poll").length;
+	// Keep observing after the recovery note: without failure stretching, ~20 ms cycles would add many abandons in 600 ms.
+	const sinceNote = Date.now();
+	await until(() => Date.now() - sinceNote >= 600, 2_000);
+	d.stop();
+	await running;
+	const abandonedAfter = f.store.events(id).filter((e) => e.kind === "abandoned_poll").length;
+	expect(abandonedAfter - abandonedAtTrigger).toBeLessThanOrEqual(8);
 	const after = f.store.task(id)!;
 	expect(after.phase).toBe(before.phase);
 	expect(after.held).toBe(true);
@@ -299,7 +326,14 @@ test("a queued task no node can admit is deferred without any node call, with bo
 	let sampled = 0;
 	const eventsBefore = f.store.events(q.id).length;
 	const d = daemon(f.fleet, { queueMaxBackoffMs: 100, sample: async () => { sampled++; return { ok: false, at: Date.now(), error: "unreachable" }; } });
-	await runFor(d, 600);
+	const running = d.run();
+	cleanups.push(async () => { d.stop(); await running.catch(() => {}); });
+	await until(() => sampled >= 2, 5_000);
+	// Keep observing after the second sample: without deferral, ~20 ms cycles would push past 10 in 600 ms.
+	const sinceSecond = Date.now();
+	await until(() => Date.now() - sinceSecond >= 600, 2_000);
+	d.stop();
+	await running;
 	expect(f.store.task(q.id)!.phase).toBe("queued");
 	expect(f.store.task(q.id)!.attemptId).toBeUndefined();
 	// cycle 20 ms over 600 ms would be ~30 passes without the deferral; backoff 20,40,80,100,100,...
@@ -502,7 +536,7 @@ test("300 tasks with 8 MB rows: metadata-only scheduling, bounded memory and tim
 		if (child.exitCode !== 0) throw new Error(out);
 		const measured = out.split("\n").find(line => line.includes("DAEMON_MEASUREMENT"));
 		if (!measured) throw new Error(out);
-		console.log(measured);
+		writeSync(2, measured + "\n");
 		return;
 	}
 	const f = fixture(["n1", "n2", "n3"]);
@@ -549,7 +583,8 @@ test("300 tasks with 8 MB rows: metadata-only scheduling, bounded memory and tim
 	let rssPeak = 0;
 	const cycleTimes: number[] = [];
 	let allObservedMs = 0;
-	const d = daemon(f.fleet);
+	// Measure scheduling cost here; the short owner-lease behavior is tested separately.
+	const d = daemon(f.fleet, { leaseMs: 60_000 });
 	try {
 		Bun.gc(true);
 		rssBefore = process.memoryUsage().rss;
@@ -577,8 +612,9 @@ test("300 tasks with 8 MB rows: metadata-only scheduling, bounded memory and tim
 	// The scheduler never materialised a row: Fleet.inspect's own reads are only of observed tasks.
 	for (const id of ids.slice(0, 100)) expect(readIds.has(id)).toBe(false);
 	for (const id of ids.slice(260)) expect(readIds.has(id)).toBe(false);
-	const measured = { dbBytes, cycleMsMax: Math.max(...cycleTimes), cycleMsMedian: cycleTimes.sort((a, b) => a - b)[2], allObservedMs, rssBeforeMiB: rssBefore / 2 ** 20, rssPeakDeltaMiB: (rssPeak - rssBefore) / 2 ** 20, observations: [...stats.reads.values()].reduce((a, b) => a + b, 0) };
-	console.log("DAEMON_MEASUREMENT " + JSON.stringify(measured));
+	const sortedCycles = [...cycleTimes].sort((a, b) => a - b);
+	const measured = { dbBytes, cycleMsMax: Math.max(...cycleTimes), cycleMsMedian: sortedCycles[2], cycleMs: cycleTimes, allObservedMs, rssBeforeMiB: rssBefore / 2 ** 20, rssPeakDeltaMiB: (rssPeak - rssBefore) / 2 ** 20, observations: [...stats.reads.values()].reduce((a, b) => a + b, 0) };
+	writeSync(2, "DAEMON_MEASUREMENT " + JSON.stringify(measured) + "\n");
 	expect(stats.maxTaskConcurrency).toBe(1);
 	expect(measured.cycleMsMax).toBeLessThan(2_000);
 	expect(measured.rssPeakDeltaMiB).toBeLessThan(400);
@@ -912,10 +948,13 @@ test("F7/M12: under rollback the daemon runs no queue pass and no return, and st
 	expect(stats.reads.get(`session-${active}`)!).toBeGreaterThanOrEqual(1);
 }, 10_000);
 
-/** A Coordinator transport for the preflight probe: logs its name, answers nothing for `ms`, exits (fails closed). */
+/** A Coordinator transport for the preflight probe: logs its name and start/end times, answers nothing for `ms`, exits (fails closed). */
 function sleepyTransport(dir: string, log: string, name: string, ms: number) {
 	const script = join(dir, "sleepy.ts");
-	writeFileSync(script, 'import { appendFileSync } from "node:fs";\nconst [log, name, ms] = process.argv.slice(2);\nappendFileSync(log, name + "\\n");\nawait Bun.sleep(Number(ms));\n');
+	writeFileSync(
+		script,
+		'import { appendFileSync } from "node:fs";\nconst [log, name, ms] = process.argv.slice(2);\nconst t0 = Date.now();\nappendFileSync(log, name + "\\n");\nappendFileSync(log, `${name}:start:${t0}\\n`);\nawait Bun.sleep(Number(ms));\nappendFileSync(log, `${name}:end:${Date.now()}\\n`);\n',
+	);
 	return { command: process.execPath, args: [script, log, name, String(ms)] };
 }
 /** Nodes "fast" (one active task) and "slow" (preflight probe `slowProbeMs`), plus three queued tasks admissible by resources. */
@@ -934,9 +973,13 @@ function placementFixture(slowProbeMs: number) {
 for (const scenario of ["slow probe", "unmeasurable"] as const) test(`R1 (${scenario}): while a queue pass places on a slow or unreachable node, the other node keeps its observation cadence`, async () => {
 	const f = placementFixture(scenario === "slow probe" ? 1_500 : 1);
 	const stats = fakeCoordinator(f.fleet, () => 2);
+	// Completed slow windows only: never compare against a start that outlived its matching end.
+	const slowWindows: { start: number; end: number }[] = [];
 	const sample = async (n: NodeConfig) => {
 		if (n.id === "slow" && scenario === "unmeasurable") {
+			const start = Date.now();
 			await Bun.sleep(1_000);
+			slowWindows.push({ start, end: Date.now() });
 			return { ok: false as const, at: Date.now(), error: "unreachable" };
 		}
 		return { ...headroom([n.id], 3).samples.get(n.id)!, at: Date.now() };
@@ -945,7 +988,16 @@ for (const scenario of ["slow probe", "unmeasurable"] as const) test(`R1 (${scen
 	const startedAt = Date.now();
 	const running = d.run();
 	cleanups.push(async () => { d.stop(); await running.catch(() => {}); });
-	await Bun.sleep(4_000);
+	await until(() => {
+		const calls = stats.nodeCalls.get("fast") ?? [];
+		if (scenario === "unmeasurable") {
+			// Do not stop until at least one slow sample has finished; otherwise "overlap" is vacuous or races.
+			return slowWindows.length >= 1 && calls.length >= 10 && f.probes("fast") >= 1;
+		}
+		// Wait for the probe's end line too, so stop() cannot race the 1.5 s sleepyTransport sleep.
+		const hasSlowEnd = readFileSync(join(f.dir, "probes.log"), "utf8").split("\n").some((l) => l.startsWith("slow:end:"));
+		return calls.length >= 10 && f.probes("fast") >= 1 && f.probes("slow") >= 1 && hasSlowEnd;
+	}, 20_000);
 	const stoppedAt = Date.now();
 	d.stop();
 	await running;
@@ -959,15 +1011,33 @@ for (const scenario of ["slow probe", "unmeasurable"] as const) test(`R1 (${scen
 	}
 	gap = Math.max(gap, stoppedAt - last);
 	// Without per-call gates the fast node waits for whole passes (seconds); here only its own sample/probe.
-	// Load-tolerant bounds: 1.5 s still sits far below an ungated whole-pass wait, and 10 calls in 4 s is
-	// one per 400 ms where an ungated node sees one per pass (seconds); the count carries the signal.
 	expect(gap).toBeLessThan(1_500);
 	expect(calls.length).toBeGreaterThanOrEqual(10);
+	// The slow work may take longer to finish; the fast node must still start 10 observations within 4 s.
+	expect(calls[9]!.start - startedAt).toBeLessThanOrEqual(4_000);
 	expect(stats.other).toEqual([]);
 	// Queue passes ran and probed: the slow node only when its sample succeeded, never when it failed.
 	expect(f.probes("fast")).toBeGreaterThanOrEqual(1);
-	if (scenario === "slow probe") expect(f.probes("slow")).toBeGreaterThanOrEqual(1);
-	else expect(f.probes("slow")).toBe(0);
+	let slowStart: number | undefined;
+	let slowEnd: number | undefined;
+	if (scenario === "slow probe") {
+		expect(f.probes("slow")).toBeGreaterThanOrEqual(1);
+		const lines = readFileSync(join(f.dir, "probes.log"), "utf8").split("\n");
+		const startLine = lines.find((l) => l.startsWith("slow:start:"));
+		const endLine = lines.find((l) => l.startsWith("slow:end:"));
+		expect(startLine).toBeDefined();
+		expect(endLine).toBeDefined();
+		slowStart = Number(startLine!.slice("slow:start:".length));
+		slowEnd = Number(endLine!.slice("slow:end:".length));
+	} else {
+		expect(f.probes("slow")).toBe(0);
+		expect(slowWindows.length).toBeGreaterThanOrEqual(1);
+		slowStart = slowWindows[0]!.start;
+		slowEnd = slowWindows[0]!.end;
+	}
+	expect(slowEnd!).toBeGreaterThan(slowStart!);
+	// Fast observations must actually overlap the slow work window, not merely finish after it starts.
+	expect(calls.some((c) => c.end > slowStart! && c.start < slowEnd!)).toBe(true);
 }, 20_000);
 
 test("R1: a queue pass measures each node at most once, keeps a failed sample for the pass and never probes that node", async () => {
