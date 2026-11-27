@@ -1325,7 +1325,7 @@ ${'<div class="grab" id="grab" role="button" tabindex="0" aria-label="Resize det
 	}
 	function focusFirstEnabledFilter(){
 		for(var i=0;i<FACETS.length;i++){var b=fBtns&&fBtns[FACETS[i].key];if(b&&!b.disabled){b.focus();return b}}
-		return null;
+		vp.focus({preventScroll:true});
 	}
 	$('fbar').addEventListener('click',function(e){
 		var b=e.target&&e.target.closest?e.target.closest('.fchip'):null;if(!b)return;
@@ -1435,8 +1435,9 @@ ${'<div class="grab" id="grab" role="button" tabindex="0" aria-label="Resize det
 			bot+=8;
 		}catch(e){bot=MOB?(W<=480?76:(H<720?110:190)):100}
 		hi=H-bot;return {x0:10,x1:W-10,y0:Math.min(hi-64,Math.max(0,(hd&&hd.offsetHeight||0)+4)),y1:hi}}
+	var mapBand=null;
 	function syncClip(){
-		var R=mapRect();
+		var R=mapBand=mapRect();
 		vp.style.setProperty('--map-top',R.y0+'px');
 		vp.style.setProperty('--map-bottom',Math.max(0,H-R.y1)+'px');
 		return R;
@@ -1680,14 +1681,14 @@ ${'<div class="grab" id="grab" role="button" tabindex="0" aria-label="Resize det
 		if(COARSE&&NS0*kf<HIT_MIN){
 			kf=HIT_MIN/NS0;
 			var gone=V.nodes.filter(function(v){return v.vis==='fail'||v.vis==='down'}).map(function(v){return pos[v.id]}).filter(Boolean)[0];
-			FIT=gone?{k:kf,x:W/2-gone.x*kf,y:H/2-gone.y*kf}:{k:kf,x:(R.x0+R.x1)/2-cmx*kf,y:R.y0-CB.y0*kf};
+			FIT=gone?{k:kf,x:W/2-gone.x*kf,y:(R.y0+R.y1)/2-gone.y*kf}:{k:kf,x:(R.x0+R.x1)/2-cmx*kf,y:R.y0-CB.y0*kf};
 		}
 	}
 	/* ---- zoom and pan: the map layer is one transformed element; scale 1 is the fit view ---- */
 	function clampView(){
-		var pad=40;
-		function ax(lo,hi,len,t){var a=len-hi*VW.k,b=-lo*VW.k,mn=Math.min(a,b)-pad,mx=Math.max(a,b)+pad;return Math.min(mx,Math.max(mn,t))}
-		VW.x=ax(CB.x0,CB.x1,W,VW.x);VW.y=ax(CB.y0,CB.y1,H,VW.y);
+		var pad=40,R=MOB?mapBand:null;
+		function ax(lo,hi,start,end,t){var a=end-hi*VW.k,b=start-lo*VW.k,mn=Math.min(a,b)-pad,mx=Math.max(a,b)+pad;return Math.min(mx,Math.max(mn,t))}
+		VW.x=ax(CB.x0,CB.x1,0,W,VW.x);VW.y=ax(CB.y0,CB.y1,R?R.y0:0,R?R.y1:H,VW.y);
 	}
 	function applyView(){
 		stage.style.transform='translate('+r1(VW.x)+'px,'+r1(VW.y)+'px) scale('+Math.round(VW.k*1000)/1000+')';

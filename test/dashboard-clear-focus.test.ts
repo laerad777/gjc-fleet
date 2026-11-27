@@ -48,9 +48,57 @@ test("filter status keeps its own height on desktop so it cannot overlap the lea
 	expect(html).toMatch(/min-width:701px\)\{#fstat\{[^}]*min-height:var\(--fstat-h\)/);
 });
 
+test("Clear moves focus to the map when no filters match any nodes", async () => {
+	const dir = mkdtempSync(join(tmpdir(), "fleet-dashboard-clear-empty-"));
+	const store = new FleetStore(join(dir, "fleet.db"));
+	try {
+		const els = await renderDashboardFixture(getDashboardState(store), { hash: "#flt=down" });
+		const bar = els.get("fbar")!;
+		const clear = (bar.children as Chip[]).find((c) => c.getAttribute("data-testid") === "filter-clear")!;
+		expect(clear.hidden).toBe(false);
+		bar.listeners.get("click")!({ target: clear });
+		expect(clear.hidden).toBe(true);
+		expect((bar.children as Chip[]).filter((chip) => !chip.hidden).every((chip) => chip.disabled)).toBe(true);
+		expect(focusedElement()).toBe(els.get("stage"));
+	} finally {
+		store.close();
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
 test("phone grid keeps the touch-target minimum on coarse pointers and pans instead of shrinking", () => {
 	const html = renderDashboardHtml();
 	const grid = html.slice(html.indexOf("function gridMobile"), html.indexOf("/* ---- zoom and pan"));
 	expect(grid).toContain("if(COARSE&&NS0*kf<HIT_MIN)");
 	expect(grid).toContain("kf=HIT_MIN/NS0");
+});
+
+test("phone drags stop with the ends of an oversized grid in the visible map band", async () => {
+	const dir = mkdtempSync(join(tmpdir(), "fleet-dashboard-pan-"));
+	const store = new FleetStore(join(dir, "fleet.db"));
+	try {
+		store.putNode(node);
+		const windowListeners = new Map<string, (event: unknown) => void>();
+		const els = await renderDashboardFixture(getDashboardState(store), { width: 390, height: 270, windowListeners });
+		const viewport = els.get("stage")!;
+		const world = els.get("world")!;
+		const hub = els.get("hubnode")!;
+		const orb = (world.children as (typeof world)[]).find((el) => el.getAttribute("data-id") === node.id)!;
+		const screenY = (el: typeof world) => {
+			const [, y, scale] = /^translate\([^,]+,([\d.-]+)px\) scale\(([\d.]+)\)$/.exec(world.style.transform)!;
+			return Number(y) + parseFloat(el.style.top) * Number(scale);
+		};
+		const start = { pointerId: 1, pointerType: "touch", clientX: 190, clientY: 150, target: viewport };
+		viewport.listeners.get("pointerdown")!(start);
+		// The fixture reserves the top 114px and bottom 76px for chrome.
+		windowListeners.get("pointermove")!({ ...start, clientY: 1150 });
+		expect(screenY(hub)).toBeGreaterThan(114);
+		expect(screenY(hub)).toBeLessThan(194);
+		windowListeners.get("pointermove")!({ ...start, clientY: -850 });
+		expect(screenY(orb)).toBeGreaterThan(114);
+		expect(screenY(orb)).toBeLessThan(194);
+	} finally {
+		store.close();
+		rmSync(dir, { recursive: true, force: true });
+	}
 });

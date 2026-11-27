@@ -22,9 +22,10 @@ class DashboardElement {
 		},
 	};
 	attrs = new Map<string, string>();
-	style = { setProperty() {} };
+	style = { setProperty() {}, transform: "", top: "", left: "" };
 	setAttribute(key: string, value: string) { this.attrs.set(key, value); }
 	getAttribute(key: string) { return this.attrs.get(key) ?? null; }
+	getBoundingClientRect() { return { height: 0, top: 0 }; }
 	removeAttribute(key: string) { this.attrs.delete(key); }
 	listeners = new Map<string, (event: unknown) => void>();
 	hidden = false;
@@ -43,7 +44,9 @@ class DashboardElement {
 
 export const focusedElement = (): unknown => DashboardElement.focused;
 
-export async function renderDashboardFixture(state: DashboardState) {
+export async function renderDashboardFixture(state: DashboardState, options: {
+	hash?: string; width?: number; height?: number; windowListeners?: DashboardElement["listeners"];
+} = {}) {
 	const elements = new Map<string, DashboardElement>();
 	const byId = (id: string) => {
 		let e = elements.get(id);
@@ -60,20 +63,25 @@ export async function renderDashboardFixture(state: DashboardState) {
 			getElementById: byId,
 			createElement: () => new DashboardElement(),
 			createTextNode: (text: string) => { const e = new DashboardElement(); e.textContent = String(text); return e; },
-			querySelector: (selector: string) => selector === "header" ? { offsetHeight: 110 } : new DashboardElement(),
+			querySelector: (selector: string) => {
+				if (selector === "header") return { offsetHeight: 110 };
+				if (selector === ".lg" && options.height) return { getBoundingClientRect: () => ({ height: 20, top: options.height! - 68 }) };
+				return new DashboardElement();
+			},
 			querySelectorAll: () => [],
 			body: new DashboardElement(),
 			documentElement: new DashboardElement(),
 			addEventListener() {},
 		},
-		innerWidth: 1280,
-		innerHeight: 800,
-		addEventListener() {},
+		innerWidth: options.width ?? 1280,
+		innerHeight: options.height ?? 800,
+		getComputedStyle: options.width ? () => ({ display: "block", visibility: "visible", getPropertyValue: () => "" }) : undefined,
+		addEventListener: (type: string, handler: (event: unknown) => void) => options.windowListeners?.set(type, handler),
 		requestAnimationFrame: () => 0,
 		matchMedia: () => ({ matches: true }),
 		fetch: async () => ({ ok: true, json: async () => JSON.parse(JSON.stringify(state)) }),
 		WebSocket: class {},
-		location: { protocol: "http:", host: "dashboard.invalid" },
+		location: { protocol: "http:", host: "dashboard.invalid", hash: options.hash },
 		setTimeout: () => 0,
 		clearTimeout: () => {},
 		setInterval: () => 0,
