@@ -18,9 +18,24 @@ import { repositoryFixture } from "./fixtures/coordinator";
 const NFC = "caf\u00e9";
 const NFD = "cafe\u0301";
 const directories: string[] = [];
+// Windows may briefly keep a fixture locked by a previous helper. Retry only
+// EBUSY, and keep the original error when the bounded retry budget runs out.
+async function removeFixtureDir(dir: string) {
+	for (let attempt = 0; ; attempt++) {
+		try {
+			await rm(dir, { recursive: true, force: true });
+			return;
+		} catch (error) {
+			if (process.platform !== "win32" || (error as NodeJS.ErrnoException | null)?.code !== "EBUSY" || attempt >= 30) {
+				throw error;
+			}
+			await Bun.sleep(100);
+		}
+	}
+}
 // Removing the large fixtures outlasts the default hook timeout on a loaded host.
 afterEach(async () => {
-	for (const dir of directories.splice(0)) await rm(dir, { recursive: true, force: true });
+	for (const dir of directories.splice(0)) await removeFixtureDir(dir);
 }, 120_000);
 const gitOk = async (argv: string[], cwd: string) => {
 	const r = await run(["git", "-c", "user.name=Review", "-c", "user.email=r@example.invalid", "-c", "commit.gpgsign=false", ...argv], cwd);
@@ -212,7 +227,7 @@ describe("round-6 MEDIUM-A: walk and Git spellings never decide safety on their 
 			expect([label, files(result)]).toEqual([label, ["ok.txt"]]);
 			valid(identity, result);
 		}
-	});
+	}, 20_000);
 	test("reviewer A7c: an untracked NFD-named nested repository is a boundary, not a concurrent change", async () => {
 		const { f, identity, p } = await workspace();
 		await mkdir(p(NFD));

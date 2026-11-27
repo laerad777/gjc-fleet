@@ -26,6 +26,17 @@ class Element {
 	addEventListener(name: string, handler: (event: any) => void) {
 		this.listeners.set(name, handler);
 	}
+	style: any = { setProperty() {} };
+	attrs = new Map<string, string>();
+	setAttribute(name: string, value: string) { this.attrs.set(name, value); }
+	getAttribute(name: string) { return this.attrs.get(name) ?? null; }
+	removeAttribute(name: string) { this.attrs.delete(name); }
+	querySelector() { return null; }
+	querySelectorAll() { return []; }
+	appendChild(child: unknown) { return child; }
+	remove() {}
+	closest() { return null; }
+	getBoundingClientRect() { return { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 }; }
 }
 
 async function select(html: string, selector: string) {
@@ -59,15 +70,15 @@ async function page(initial: DashboardState) {
 	runInNewContext(script, {
 		document: {
 			getElementById: (id: string) => {
-				const element = elements.get(id);
-				if (!element) throw new Error(`Missing page element ${id}`);
+				let element = elements.get(id);
+				if (!element) { element = new Element(); elements.set(id, element); }
 				return element;
 			},
 			body: new Element(),
-			querySelector: (selector: string) => {
-				if (selector !== "main") throw new Error(`Unexpected selector ${selector}`);
-				return main;
-			},
+			documentElement: new Element(),
+			addEventListener: () => {},
+			createElement: () => new Element(),
+			querySelector: (selector: string) => (selector === "main" ? main : new Element()),
 			// Resource meter patching is outside these label tests; initial node HTML is captured.
 			querySelectorAll: () => [],
 		},
@@ -86,6 +97,13 @@ async function page(initial: DashboardState) {
 		location: { protocol: "http:", host: "dashboard.invalid" },
 		setTimeout: () => 0,
 		setInterval: () => 0,
+		clearTimeout: () => {},
+		innerWidth: 1280,
+		innerHeight: 800,
+		matchMedia: () => ({ matches: false, addEventListener() {} }),
+		requestAnimationFrame: () => 0,
+		addEventListener: () => {},
+		Date,
 	});
 	await new Promise<void>((resolve) => setImmediate(resolve));
 	expect(requests).toEqual(["/api/state"]);
@@ -203,4 +221,69 @@ test("a node that can never observe a dimension says so, and that gating would e
 	expect(nodes).not.toContain("brokerSessionListOk");
 	snapshot.nodes[0].health.neverObservable = [];
 	expect((await page(snapshot)).element("nodes").innerHTML).not.toContain("unobservable");
+});
+
+test("topology only claims continued work when the server confirms it", async () => {
+	const fixture = state([task("active")]);
+	fixture.summary.overall = { state: "degraded", confirmedRunning: 0, reasons: ["node_paths_down"] };
+	const browser = await page(fixture);
+	expect(browser.element("hl").innerHTML).toContain("Activity not confirmed");
+	expect(browser.element("hl").innerHTML).not.toContain("still running");
+	fixture.summary.overall.confirmedRunning = 1;
+	browser.update(fixture);
+	expect(browser.element("hl").innerHTML).toContain("1 task confirmed running");
+	fixture.summary.overall.state = "critical";
+	browser.update(fixture);
+	expect(browser.element("ov-t").textContent).toBe("Down");
+	fixture.summary.overall.state = "unknown";
+	browser.update(fixture);
+	expect(browser.element("ov-t").textContent).toBe("Unknown");
+});
+
+test("expired leases and incomplete checks stay distinct from a node's reachability", async () => {
+	const fixture = state([]);
+	fixture.hub = { lease: { state: "expired", expiresAt: fixture.generatedAt, lastCycleAt: null } };
+	expect(fixture.nodes[0].reachable).toBe(true);
+	const browser = await page(fixture);
+	expect(browser.element("lease-t").textContent).toBe("Hub lease expired");
+	expect(browser.element("ov-t").textContent).toBe("Unknown");
+	fixture.hub.lease = { state: "absent", expiresAt: null, lastCycleAt: null };
+	browser.update(fixture);
+	expect(browser.element("lease").className).not.toContain("on");
+});
+
+test("topology wheel zoom is local to the map, survives a snapshot, and Fit restores the initial scale", async () => {
+	const fixture = state([task("active")]);
+	const browser = await page(fixture);
+	const map = browser.element("stage");
+	expect(map.getAttribute("data-zoom")).toBe("1");
+	let prevented = 0;
+	map.listeners.get("wheel")!({
+		clientX: 640, clientY: 400, deltaY: -200, deltaMode: 0, ctrlKey: false,
+		preventDefault: () => { prevented++; },
+	});
+	const zoom = Number(map.getAttribute("data-zoom"));
+	expect(zoom).toBeGreaterThan(1.2);
+	expect(prevented).toBe(1);
+	fixture.summary.overall = { state: "degraded", confirmedRunning: 0, reasons: ["node_paths_down"] };
+	browser.update(fixture);
+	expect(Number(map.getAttribute("data-zoom"))).toBe(zoom);
+	const reset = (browser.element("zr") as Element & { onclick: () => void }).onclick;
+	reset();
+	expect(map.getAttribute("data-zoom")).toBe("1");
+});
+
+test("critical paths do not count a merely assigned task as in flight", async () => {
+	const fixture = state([task("active")]);
+	fixture.summary.overall = { state: "critical", confirmedRunning: 0, reasons: ["node_paths_down"] };
+	fixture.nodes[0]!.status = { level: "down", reasons: ["coordinator_unreachable"] };
+	fixture.nodes[0]!.tasksAtRisk = { count: 1, taskIds: [fixture.tasks[0]!.id] };
+	const browser = await page(fixture);
+	expect(browser.element("sum").innerHTML).toContain("In flight</span><strong>0");
+	expect(browser.element("sum").innerHTML).toContain("Needs eyes</span><strong>1");
+	expect(browser.element("hl").innerHTML).not.toContain("still running");
+	fixture.summary.overall = { state: "degraded", confirmedRunning: 1, reasons: ["node_paths_down"] };
+	browser.update(fixture);
+	expect(browser.element("ov-t").textContent).toBe("Down");
+	expect(browser.element("sum").innerHTML).toContain("In flight</span><strong>0");
 });

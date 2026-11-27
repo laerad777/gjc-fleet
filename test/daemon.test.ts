@@ -1,6 +1,6 @@
 import { afterEach, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync, writeSync } from "node:fs";
 import { hostname, tmpdir } from "node:os";
 import { join } from "node:path";
 import { rm } from "node:fs/promises";
@@ -536,7 +536,7 @@ test("300 tasks with 8 MB rows: metadata-only scheduling, bounded memory and tim
 		if (child.exitCode !== 0) throw new Error(out);
 		const measured = out.split("\n").find(line => line.includes("DAEMON_MEASUREMENT"));
 		if (!measured) throw new Error(out);
-		console.log(measured);
+		writeSync(2, measured + "\n");
 		return;
 	}
 	const f = fixture(["n1", "n2", "n3"]);
@@ -583,7 +583,7 @@ test("300 tasks with 8 MB rows: metadata-only scheduling, bounded memory and tim
 	let rssPeak = 0;
 	const cycleTimes: number[] = [];
 	let allObservedMs = 0;
-	// This fixture measures scheduling and memory, not lease renewal under hosted-runner load.
+	// Measure scheduling cost here; the short owner-lease behavior is tested separately.
 	const d = daemon(f.fleet, { leaseMs: 60_000 });
 	try {
 		Bun.gc(true);
@@ -612,8 +612,9 @@ test("300 tasks with 8 MB rows: metadata-only scheduling, bounded memory and tim
 	// The scheduler never materialised a row: Fleet.inspect's own reads are only of observed tasks.
 	for (const id of ids.slice(0, 100)) expect(readIds.has(id)).toBe(false);
 	for (const id of ids.slice(260)) expect(readIds.has(id)).toBe(false);
-	const measured = { dbBytes, cycleMsMax: Math.max(...cycleTimes), cycleMsMedian: cycleTimes.sort((a, b) => a - b)[2], allObservedMs, rssBeforeMiB: rssBefore / 2 ** 20, rssPeakDeltaMiB: (rssPeak - rssBefore) / 2 ** 20, observations: [...stats.reads.values()].reduce((a, b) => a + b, 0) };
-	console.log("DAEMON_MEASUREMENT " + JSON.stringify(measured));
+	const sortedCycles = [...cycleTimes].sort((a, b) => a - b);
+	const measured = { dbBytes, cycleMsMax: Math.max(...cycleTimes), cycleMsMedian: sortedCycles[2], cycleMs: cycleTimes, allObservedMs, rssBeforeMiB: rssBefore / 2 ** 20, rssPeakDeltaMiB: (rssPeak - rssBefore) / 2 ** 20, observations: [...stats.reads.values()].reduce((a, b) => a + b, 0) };
+	writeSync(2, "DAEMON_MEASUREMENT " + JSON.stringify(measured) + "\n");
 	expect(stats.maxTaskConcurrency).toBe(1);
 	expect(measured.cycleMsMax).toBeLessThan(2_000);
 	expect(measured.rssPeakDeltaMiB).toBeLessThan(400);
@@ -1041,6 +1042,8 @@ for (const scenario of ["slow probe", "unmeasurable"] as const) test(`R1 (${scen
 
 test("R1: a queue pass measures each node at most once, keeps a failed sample for the pass and never probes that node", async () => {
 	const f = placementFixture(1);
+	// Keep active-task observation off the counted preflight transport.
+	fakeCoordinator(f.fleet, () => 2);
 	const sampled = new Map<string, number>();
 	const sample = async (n: NodeConfig) => {
 		sampled.set(n.id, (sampled.get(n.id) ?? 0) + 1);

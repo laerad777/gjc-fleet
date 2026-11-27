@@ -6,8 +6,8 @@ import { join } from "node:path";
 import type { Phase, TaskRecord } from "../src/contracts";
 import { FleetStore } from "../src/store";
 import { Fleet } from "../src/fleet";
-import { getDashboardState, startDashboardServer, renderDashboardHtml } from "../src/dashboard";
-import { runInNewContext } from "node:vm";
+import { getDashboardState, startDashboardServer } from "../src/dashboard";
+import { renderDashboardFixture } from "./dashboard-vm";
 import { refuseHostGjc } from "./host-gjc-guard";
 const cleanup: Array<() => void> = [];
 afterEach(() => { for (const close of cleanup.splice(0)) close(); });
@@ -49,7 +49,9 @@ for(const mutation of ["warnings","scope","missingLive","pagination","partial","
 test("dashboard API and page render archived history collapsed with original reason",async()=>{
  const f=fixture();await f.archive();cleanup.push(refuseHostGjc());const server=startDashboardServer(f.store,0,"127.0.0.1",{probeNodes:false});
  try{const response=await fetch(`http://127.0.0.1:${server.port}/api/state`);expect(response.status).toBe(200);const state:any=await response.json();expect(state.tasks).toEqual([]);expect(state.archivedTasks[0].archivedFrom.reason).toBe(f.task.reason);
- const elements=new Map<string,any>();const element=(id:string)=>{if(!elements.has(id))elements.set(id,{innerHTML:"",textContent:"",className:"",lastElementChild:{textContent:""},classList:{add(){},remove(){}},addEventListener(){}});return elements.get(id);};const html=renderDashboardHtml();runInNewContext(html.slice(html.indexOf("<script>")+8,html.indexOf("</script>")),{document:{getElementById:element,querySelector:()=>element("main"),body:element("body")},fetch:async()=>({ok:true,json:async()=>state}),WebSocket:class{},location:{protocol:"http:",host:"localhost"},setInterval(){},setTimeout(){}}); await new Promise(resolve=>setImmediate(resolve));expect(element("tasks").innerHTML).toContain('class="fold" data-fold="archived"');expect(element("tasks").innerHTML).not.toContain('class="fold open" data-fold="archived"');expect(element("tasks").innerHTML).toContain("Archived tasks");expect(element("tasks").innerHTML).not.toContain("original unknown");}finally{server.stop(true);}
+ const elements = await renderDashboardFixture(state);
+ const element = (id: string) => elements.get(id)!;
+ expect(element("tasks").innerHTML).toContain('class="fold" data-fold="archived"');expect(element("tasks").innerHTML).not.toContain('class="fold open" data-fold="archived"');expect(element("tasks").innerHTML).toContain("Archived tasks");expect(element("tasks").innerHTML).not.toContain("original unknown");}finally{server.stop(true);}
 });
 test("CLI queries trusted transport; read-only refuses",async()=>{const f=fixture("failed");const argv=[process.execPath,join(import.meta.dir,"../src/cli.ts"),"--db",f.path];const ro=Bun.spawn([...argv,"--read-only","task","archive",f.task.id],{stdout:"pipe",stderr:"pipe"});expect(await ro.exited).toBe(1);expect(f.store.task(f.task.id)?.phase).toBe("failed");const child=Bun.spawn([...argv,"task","archive",f.task.id],{stdout:"pipe",stderr:"pipe"});const output=await new Response(child.stdout).text();expect(await child.exited).toBe(0);expect(JSON.parse(output).phase).toBe("archived");});
 test("archive refusal keeps its code and records a bounded store diagnostic without changing the task",async()=>{const f=fixture("active");const before=f.store.task(f.task.id);await expect(f.archive()).rejects.toThrow("Only unknown or failed");expect(f.store.task(f.task.id)).toEqual(before);const refused=f.store.events(f.task.id).findLast(e=>e.kind==="refused")!;expect(refused.data).toMatchObject({action:"archive",code:"ARCHIVE_PHASE",certainty:"local_transaction_rolled_back"});expect((refused.data as any).failureDiagnostic).toEqual({version:1,use:"diagnostic_only_not_evidence",source:"Store.transaction",phase:"record",errorClass:"FleetError",code:"fleet:archive_phase",message:"Fleet check refused the step"});expect(JSON.stringify(refused.data)).not.toContain("Only unknown");});

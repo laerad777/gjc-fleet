@@ -69,10 +69,25 @@ jobs:
       - run: bunx tsc --noEmit
       - run: bunx tsc --noEmit -p tsconfig.test.json
       - name: Build and smoke-test the CLI
+        shell: bash
         run: |
           bun run build
-          bun src/cli.ts --help
-          bun .local/build/cli.js --help
+          smoke_dir=$(mktemp -d)
+          trap 'rm -rf -- "$smoke_dir"' EXIT
+          bun src/cli.ts --help </dev/null >"$smoke_dir/source.out" 2>"$smoke_dir/source.err"
+          bun .local/build/cli.js --help </dev/null >"$smoke_dir/bundle.out" 2>"$smoke_dir/bundle.err"
+          if [[ $(head -n 1 "$smoke_dir/source.out") != "GJC Fleet "* ]]; then
+            echo "::error::Source CLI help did not start with the expected banner."
+            exit 1
+          fi
+          if [[ -s "$smoke_dir/source.err" || -s "$smoke_dir/bundle.err" ]]; then
+            echo "::error::Source or bundled CLI help wrote to stderr."
+            exit 1
+          fi
+          if ! cmp -s "$smoke_dir/source.out" "$smoke_dir/bundle.out"; then
+            echo "::error::Bundled CLI help output differs from source CLI help."
+            exit 1
+          fi
 
   security:
     name: Privacy, license and secrets

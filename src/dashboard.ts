@@ -1,5 +1,5 @@
 import { type HeldCharge, type ResourceSample, resourceReasons, unmeasuredTasks } from "./admission";
-import type { AuditEvent, DispositionKind, LateReceipt, NodeConfig, Phase, ReceiptlessSettlement, TaskProgress, TaskRecord, TaskState } from "./contracts";
+import { SELECTED_NODE_REASONS, type AuditEvent, type DispositionKind, type LateReceipt, type NodeConfig, type Phase, type ReceiptlessSettlement, type SelectedNodeReason, type TaskProgress, type TaskRecord, type TaskState } from "./contracts";
 import { DASHBOARD_HTML } from "./dashboard-page";
 import { EXECUTION_FAILURE_REPORTED } from "./execution";
 import { executionOutcome, exportReviewPending, placementView, reasonClass, shownPlacement } from "./core";
@@ -9,6 +9,8 @@ import type { FleetStore, ResourceReturnStatus } from "./store";
 import type { NodeHealthHistory } from "./node-health";
 import { type DeliverableView, withDeliverables } from "./work-unit";
 import { spawnTrusted } from "./spawn";
+import { dashboardTaskAttention, type DashboardTaskAttention, type DashboardSshEvidence, dashboardSshEvidence, dashboardSshLinks, dashboardSshRoute } from "./dashboard-map-view";
+import { dashboardHealthFreshness, dashboardHubLease, dashboardNodeCondition, dashboardOverall, type DashboardHealthFreshness, type DashboardHubLease, type DashboardNodeStatus, type DashboardOverall, type DashboardTasksAtRisk } from "./dashboard-status";
 import { publicCommandError, publicExitError, publicLateReceipt, publicSettlement } from "./dashboard-poll-view";
 
 declare const Bun: any;
@@ -143,6 +145,8 @@ export interface DashboardTask {
 	title: string;
 	caller: string;
 	phase: Phase;
+	/** Operator-facing state, independent of running/reserved capacity counts. */
+	attention?: DashboardTaskAttention;
 	nodeId?: string;
 	held: boolean;
 	executionTerminal: boolean;
@@ -183,6 +187,8 @@ export interface DashboardTask {
 		outcome?: string;
 		nodeId?: string;
 		globalFull?: boolean;
+		/** Only on task detail: an allowlisted code recorded by the last selection. */
+		reason?: SelectedNodeReason | "no_eligible_node" | "global_capacity";
 		exclusions: Array<{ nodeId: string; reasons: string[] }>;
 	};
 	/**
@@ -333,6 +339,10 @@ export interface DashboardNode {
 	/** How often this node was skipped during selection, by reason. */
 	exclusions: Record<string, number>;
 	probe: NodeProbe | null;
+	/** Observed control path condition, not a statement that the host is powered off. */
+	status?: DashboardNodeStatus;
+	/** Held work whose outcome is unconfirmed behind an observed failed path. */
+	tasksAtRisk?: DashboardTasksAtRisk;
 	/** Latest streamed measurement; null when streaming is off or no sample has arrived yet. */
 	resources: NodeResources | null;
 	/** Node stability from the hub's health history (absent without one or with the switch off). Independent of
@@ -349,14 +359,14 @@ export interface DashboardNodeHealth {
 	required: number;
 	/** Display only: store wall time of the latest recorded probe and of the last failure. */
 	latestAt?: number;
+	freshness?: DashboardHealthFreshness;
 	lastFailure?: { at: number; dimensions: string[] };
 	/** Dimensions this node's configuration can never observe (no guarded sdkTransport): such a
 	 * node can never become stable, so switching gating on excludes it from automatic selection. */
 	neverObservable: string[];
 }
 
-function nodeHealthView(history: NodeHealthHistory, node: NodeConfig, gating: "observe" | "enforce"): DashboardNodeHealth {
-	const health = history.dimensions(node.id);
+function nodeHealthView(health: ReturnType<NodeHealthHistory["dimensions"]>, node: NodeConfig, gating: "observe" | "enforce", now: number): DashboardNodeHealth {
 	return {
 		gating,
 		neverObservable: brokerSessionListObservable(node) ? [] : ["brokerSessionListOk"],
@@ -365,6 +375,7 @@ function nodeHealthView(history: NodeHealthHistory, node: NodeConfig, gating: "o
 		consecutiveGood: health.consecutiveGood,
 		required: health.required,
 		...(health.latest ? { latestAt: health.latest.at } : {}),
+		freshness: dashboardHealthFreshness([health.latest?.at], now, HEALTH_OBSERVE_MS * 3),
 		...(health.lastFailure ? { lastFailure: { at: health.lastFailure.at, dimensions: health.lastFailure.dimensions } } : {}),
 	};
 }
@@ -378,6 +389,7 @@ export interface DashboardState {
 	/** true when the server measures nodes live (SSH resource streams and GJC probes). */
 	live: boolean;
 	summary: {
+		overall?: DashboardOverall;
 		totalNodes: number;
 		healthyNodes: number;
 		/** Tasks in a RUNNING phase (preparing, dispatching, active). Provisional completions are counted in unsettledTasks, not here. */
@@ -430,10 +442,15 @@ export interface DashboardState {
 	};
 	gjcRuntime: GjcRuntimeStatus;
 	nodes: DashboardNode[];
+	/** Observations of existing hub-initiated SSH resource streams only. */
+	sshLinks?: ReturnType<typeof dashboardSshLinks>;
 	tasks: DashboardTask[];
 	archivedTasks: DashboardTask[];
 	/** The `fleet daemon` owner lease and its published status; absent when no daemon row exists. */
 	daemon?: ReturnType<FleetStore["daemonStatus"]>;
+	hub?: { lease: DashboardHubLease };
+	/** Available only when the existing health history is enabled. No producer liveness is inferred. */
+	health?: { gating: "observe" | "enforce"; freshness: DashboardHealthFreshness };
 	/** Present only with a health history while the stored switch is on (`enforce`: the operator
 	 * switch gates automatic selection). Switch off: absent, and so is every nodes[].health. */
 	nodeHealth?: { gating: "observe" | "enforce"; operator?: string; reason?: string; at?: number };
@@ -893,11 +910,21 @@ function eventDetail(event: AuditEvent): string | undefined {
 /** Consecutive noise rows of these kinds collapse to one timeline entry with a count. */
 const COLLAPSE_TIMELINE = new Set(["observation", "abandoned_poll", "stale_poll_failure"]);
 
+/** Never forward arbitrary audit text or explain a legacy choice from its input or today's registry. */
+function publicSelectionReason(data: Record<string, unknown>, assignedNode: string | undefined) {
+	if (data.outcome === "selected" && assignedNode !== undefined && data.nodeId === assignedNode)
+		return SELECTED_NODE_REASONS.find((code) => code === data.reason);
+	if (data.outcome === "rejected" && assignedNode === undefined && data.nodeId === undefined &&
+		(data.reason === "no_eligible_node" || data.reason === "global_capacity"))
+		return data.reason;
+	return undefined;
+}
+
 function projectTask(
 	task: TaskState,
 	events: AuditEvent[],
 	resourceReturn: ResourceReturnStatus | undefined,
-	options?: { timelineLimit?: number | null },
+	options?: { timelineLimit?: number | null; includeSelectionReason?: boolean },
 ): DashboardTask {
 	const placement = placementView(task);
 	const stages: Array<string | null> = PIPELINE_STAGES.map(() => null);
@@ -913,10 +940,12 @@ function projectTask(
 		}
 		if (event.kind === "selection") {
 			const data = (event.data ?? {}) as Record<string, any>;
+			const reason = options?.includeSelectionReason ? publicSelectionReason(data, task.nodeId) : undefined;
 			selection = {
 				outcome: data.outcome,
 				nodeId: data.nodeId,
 				globalFull: data.globalFull === true,
+				...(reason !== undefined ? { reason } : {}),
 				exclusions: Array.isArray(data.exclusions)
 					? data.exclusions.map((x: any) => ({ nodeId: String(x.nodeId), reasons: Array.isArray(x.reasons) ? x.reasons.map(String) : [] }))
 					: [],
@@ -944,6 +973,13 @@ function projectTask(
 		title: headline(task.input.prompt),
 		caller: task.input.caller,
 		phase: task.phase,
+		attention: dashboardTaskAttention(task.phase, {
+			executionTerminal: task.result?.executionTerminal === true,
+			exportReview: exportReviewPending(task.result),
+			receiptConflict: !!task.result?.lateReceipt && !task.result.lateReceipt.acceptance,
+			resultSaved: stageIndex >= RESULT_STAGE_INDEX,
+			unplaceable: placement?.verdict === "unplaceable",
+		}),
 		nodeId: task.nodeId,
 		held: task.held,
 		executionTerminal: task.result?.executionTerminal === true,
@@ -994,7 +1030,7 @@ export function getDashboardTask(store: FleetStore, taskId: string): DashboardTa
 	const task = store.taskState(taskId);
 	if (!task) return null;
 	const returns = store.resourceReturnStatuses([task]);
-	return projectTask(task, store.events(taskId), returns.get(taskId), { timelineLimit: null });
+	return projectTask(task, store.events(taskId), returns.get(taskId), { timelineLimit: null, includeSelectionReason: true });
 }
 
 export function getDashboardState(
@@ -1003,6 +1039,7 @@ export function getDashboardState(
 	probes: ReadonlyMap<string, NodeProbe> = new Map(),
 	resources?: (nodeId: string) => NodeResources | undefined,
 	health?: NodeHealthHistory,
+	sshEvidence?: (node: NodeConfig) => DashboardSshEvidence | undefined,
 ): DashboardState {
 	// Switch off: nothing is observed or recorded, so nothing is shown; the state equals the state
 	// without node health (no nodeHealth, no nodes[].health; review 09e80a06 F1).
@@ -1023,9 +1060,8 @@ export function getDashboardState(
 	// Same rule the CLI applies at submit time, evaluated on the live stream sample.
 	const now = Date.now();
 	const held = resources ? store.heldCharges(allTasks) : new Map<string, HeldCharge[]>();
-	const admissionView = (n: (typeof allNodes)[number]) => {
+	const admissionView = (n: (typeof allNodes)[number], latest: NodeResources | null) => {
 		if (!resources) return null;
-		const latest = resources(n.id);
 		const reasons = [
 			...(!n.enabled ? ["disabled"] : []),
 			...(n.draining ? ["draining"] : []),
@@ -1042,6 +1078,8 @@ export function getDashboardState(
 		return { open: reasons.length === 0, reasons };
 	};
 
+	const conditions: ReturnType<typeof dashboardNodeCondition>[] = [];
+	const healthObservations: (number | undefined)[] = [];
 	const nodes: DashboardNode[] = allNodes.map((n) => {
 		const mine = projected.filter((t) => t.nodeId === n.id);
 		const exclusions: Record<string, number> = {};
@@ -1058,6 +1096,13 @@ export function getDashboardState(
 					}),
 				}
 			: null;
+		const latest = resources?.(n.id) ?? null;
+		const observation = health && gating ? health.dimensions(n.id) : undefined;
+		if (gating && n.enabled) healthObservations.push(observation?.latest?.at);
+		const condition = dashboardNodeCondition(n.id, mine, probe, latest, observation?.latest, {
+			now, controlMs: HEALTH_OBSERVE_MS * 3, resourceMs: SAMPLE_STALE_MS, heartbeatMs: HEARTBEAT_STALE_MS,
+		});
+		conditions.push(condition);
 		return {
 			id: n.id,
 			os: n.os,
@@ -1069,7 +1114,7 @@ export function getDashboardState(
 			modelReady: n.modelReady,
 			currentLoad: mine.filter((t) => t.held && RUNNING.includes(t.phase)).length,
 			heldNotRunning: mine.filter((t) => t.held && !RUNNING.includes(t.phase)).length,
-			admission: admissionView(n),
+			admission: admissionView(n, latest),
 			modelProfiles: n.modelProfiles ?? [],
 			operations: n.operations ?? [],
 			holding: mine.filter((t) => t.held).map((t) => ({ id: t.id, key: t.key, phase: t.phase, executionTerminal: t.executionTerminal })),
@@ -1083,8 +1128,10 @@ export function getDashboardState(
 			troubled: mine.filter((t) => TROUBLE.includes(t.phase)).length,
 			exclusions,
 			probe,
-			resources: resources?.(n.id) ?? null,
-			...(health && gating ? { health: nodeHealthView(health, n, gating.gating) } : {}),
+			resources: latest,
+			status: condition.status,
+			tasksAtRisk: condition.tasksAtRisk,
+			...(observation && gating ? { health: nodeHealthView(observation, n, gating.gating, now) } : {}),
 		};
 	});
 
@@ -1092,7 +1139,8 @@ export function getDashboardState(
 	const inFlight = (t: DashboardTask) => RUNNING.includes(t.phase) || t.phase === "queued" || t.phase === "approval_required";
 	const unsettled = allTasks.filter(provisional).length;
 	const count = (phases: Phase[]) => allTasks.filter((t) => phases.includes(t.phase)).length;
-	const daemon = store.daemonStatus();
+	const daemon = store.daemonStatus(now);
+	const lease = dashboardHubLease(daemon, now);
 	// An incomplete export awaiting operator acceptance is its own outcome, not plain "unverified".
 	const awaitingReview = (t: TaskRecord) => t.phase === "completed_unverified" && exportReviewPending(t.result);
 	const exportIncomplete = allTasks.filter(awaitingReview).length;
@@ -1106,6 +1154,7 @@ export function getDashboardState(
 		generatedAt: new Date().toISOString(),
 		live: resources !== undefined,
 		summary: {
+			overall: dashboardOverall(conditions, lease),
 			totalNodes: allNodes.length,
 			healthyNodes: allNodes.filter((n) => n.enabled && n.reachable && n.sdkReady && n.modelReady && !n.draining).length,
 			activeTasks: count(RUNNING),
@@ -1151,10 +1200,12 @@ export function getDashboardState(
 		},
 		gjcRuntime: gjcStatus ?? { installed: false, lastCheckedAt: new Date().toISOString() },
 		nodes,
+		sshLinks: dashboardSshLinks(allNodes, sshEvidence),
 		tasks: listedTasks,
 		archivedTasks: archivedListed,
 		...(daemon ? { daemon } : {}),
-		...(gating ? { nodeHealth: gating } : {}),
+		hub: { lease },
+		...(gating ? { nodeHealth: gating, health: { gating: gating.gating, freshness: dashboardHealthFreshness(healthObservations, now, HEALTH_OBSERVE_MS * 3) } } : {}),
 	});
 }
 
@@ -1178,6 +1229,8 @@ const SAMPLE_STALE_MS = 12_000;
 const STREAM_STALL_MS = 45_000;
 /** How long a stopped stream process gets after SIGTERM before it is sent SIGKILL. */
 const STOP_KILL_GRACE_MS = 1_000;
+/** Drain final stdout after the direct transport exits, but do not wait for inherited pipe EOF. */
+const STREAM_EXIT_DRAIN_MS = 250;
 
 const LINUX_STREAM = `n=$(grep -c '^cpu[0-9]' /proc/stat)
 p=$(LC_ALL=C lscpu -p=SOCKET,CORE 2>/dev/null | awk '!/^#/ && !seen[$0]++ {n++} END{print n+0}')
@@ -1308,6 +1361,8 @@ export function streamCommand(node: NodeConfig): { argv: string[]; script?: stri
 }
 
 export interface ResourceStreams {
+	/** No new traffic: evidence from the existing SSH-backed resource stream. */
+	sshEvidence(node: NodeConfig): DashboardSshEvidence | undefined;
 	/** Latest measurement per node; a stalled or dead stream reports ok:false instead of an old value. */
 	latest(nodeId: string): NodeResources | undefined;
 	stop(): void;
@@ -1329,6 +1384,7 @@ export function startResourceStreams(
 		proc?: any;
 		resources?: NodeResources;
 		at: number;
+		ssh?: { checkedAt: string; receivedAt: number; route: string };
 		failures: number;
 		timer?: ReturnType<typeof setTimeout>;
 		/** Ends everything the current launch started: ticker, pipes, readers and the process. */
@@ -1348,6 +1404,7 @@ export function startResourceStreams(
 		const node = nodes().find((candidate) => candidate.id === nodeId);
 		if (stopped || !entry || !node) return;
 		const command = commandFor(node);
+		const sshRoute = options.command === undefined && command?.argv[0] === "ssh" ? dashboardSshRoute(node) : undefined;
 		if (!command) {
 			publish(nodeId, entry, { ok: false, error: "resource_stream_refused" });
 			return;
@@ -1365,12 +1422,30 @@ export function startResourceStreams(
 		let awaiting = false;
 		let lastOutput = Date.now();
 		let stalled = false;
+		let ioClosed = false;
+		let exitDrain: ReturnType<typeof setTimeout> | undefined;
+		const stdoutReader = (proc.stdout as ReadableStream<Uint8Array>).getReader();
+		const stderrReader = (proc.stderr as ReadableStream<Uint8Array>).getReader();
+		const closeIO = () => {
+			if (ioClosed) return;
+			ioClosed = true;
+			clearInterval(ticker);
+			if (exitDrain) clearTimeout(exitDrain);
+			try {
+				proc.stdin.end();
+			} catch {}
+			// An SSH ControlPersist process may own inherited pipe writers. Close our ends
+			// instead of signalling the process group or waiting for those writers to leave.
+			void stdoutReader.cancel().catch(() => {});
+			void stderrReader.cancel().catch(() => {});
+		};
 		const tick = () => {
+			if (ioClosed) return;
 			const now = Date.now();
-			if (!stalled && now - lastOutput > stallMs) {
-				// Frozen remote (e.g. hibernated sandbox): end this process; the exit handler reconnects.
-				// Immediate SIGKILL: a SIGTERM trap would otherwise block reconnect until hub stop.
+			if (now - lastOutput > stallMs) {
+				// A frozen transport must not block reconnect on stdout EOF or ignore SIGTERM.
 				stalled = true;
+				closeIO();
 				try {
 					proc.kill("SIGKILL");
 				} catch {}
@@ -1385,28 +1460,25 @@ export function startResourceStreams(
 				proc.stdin.flush();
 			} catch {}
 		};
-		if (command.script) proc.stdin.write(command.script);
-		tick();
 		const ticker = setInterval(tick, 250);
-		proc.exited.then(() => clearInterval(ticker));
-		// Explicit readers so a stop can cancel them: a child's own child (an ssh ControlPersist master)
-		// can hold the pipes open long after the child is gone, and a pending read keeps the process alive.
-		const stdoutReader = (proc.stdout as ReadableStream<Uint8Array>).getReader();
-		const stderrReader = (proc.stderr as ReadableStream<Uint8Array>).getReader();
-		const stderr = (async () => {
-			const decoder = new TextDecoder();
-			let text = "";
+		if (command.script) {
 			try {
-				for (let read = await stderrReader.read(); !read.done; read = await stderrReader.read())
-					text += decoder.decode(read.value, { stream: true });
+				proc.stdin.write(command.script);
 			} catch {}
-			return text;
+		}
+		tick();
+		void proc.exited.then(() => {
+			clearInterval(ticker);
+			if (!ioClosed) exitDrain = setTimeout(closeIO, STREAM_EXIT_DRAIN_MS);
+		});
+		// Drain stderr without retaining its unused contents.
+		void (async () => {
+			try {
+				while (!(await stderrReader.read()).done) {}
+			} catch {}
 		})();
 		entry.release = () => {
-			clearInterval(ticker);
-			try {
-				proc.stdin.end();
-			} catch {}
+			closeIO();
 			// Hub stop / process exit: SIGKILL immediately. setTimeout grace cannot run on `exit`, and a
 			// child that traps SIGTERM would otherwise outlive the hub. Per-node reconcile drops keep the grace.
 			if (stopped) {
@@ -1424,20 +1496,19 @@ export function startResourceStreams(
 				}, STOP_KILL_GRACE_MS);
 				proc.exited.then(() => clearTimeout(escalate));
 			}
-			stdoutReader.cancel().catch(() => {});
-			stderrReader.cancel().catch(() => {});
 		};
-		(async () => {
+		void (async () => {
 			let counters: { idle: number; total: number } | undefined;
 			let sampled = false;
 			let buffer = "";
 			const decoder = new TextDecoder();
 			try {
-				for (let read = await stdoutReader.read(); !read.done; read = await stdoutReader.read()) {
+				for (let read = await stdoutReader.read(); !read.done && !ioClosed; read = await stdoutReader.read()) {
+					if (stopped || entries.get(nodeId) !== entry || entry.proc !== proc) return;
 					lastOutput = Date.now();
 					buffer += decoder.decode(read.value, { stream: true });
 					let newline = buffer.indexOf("\n");
-					while (newline >= 0) {
+					while (newline >= 0 && !ioClosed) {
 						const line = buffer.slice(0, newline).trim();
 						const parsed = parseResourceLine(line, counters);
 						buffer = buffer.slice(newline + 1);
@@ -1448,13 +1519,15 @@ export function startResourceStreams(
 						awaiting = false;
 						sampled = true;
 						entry.failures = 0;
+						if (sshRoute !== undefined && parsed.resources.ok) entry.ssh = { checkedAt: new Date().toISOString(), receivedAt: performance.now(), route: sshRoute };
 						publish(nodeId, entry, parsed.resources);
 					}
 				}
 			} catch {}
 			await proc.exited;
+			closeIO();
 			if (stopped || entries.get(nodeId) !== entry || entry.proc !== proc) return;
-			if (proc.exitCode === 0 && sampled) {
+			if (!stalled && proc.exitCode === 0 && sampled) {
 				// Planned end (lifetime cap): reconnect at once; the stale check covers the gap.
 				launch(nodeId);
 				return;
@@ -1509,6 +1582,10 @@ export function startResourceStreams(
 	process.once("SIGTERM", onSignal);
 
 	return {
+		sshEvidence(node) {
+			const entry = entries.get(node.id);
+			return dashboardSshEvidence(node, entry?.ssh, entry?.resources?.ok === true, performance.now(), SAMPLE_STALE_MS);
+		},
 		latest(nodeId) {
 			const entry = entries.get(nodeId);
 			if (!entry?.resources) return undefined;
@@ -1594,6 +1671,19 @@ export function dashboardWsOriginAllowed(req: Request, bindHostname: string): bo
 	return parsed.protocol === new URL(req.url).protocol;
 }
 
+/** Whole-state freshness transitions must be visible even when another node is still streaming. */
+export function dashboardPushKey(state: DashboardState): string {
+	const { generatedAt: _generatedAt, ...rest } = state;
+	return JSON.stringify({
+		...rest,
+		// Measurements and timestamps use the separate resources payload. Keep only the stable
+		// availability class here so a silent stream aging out triggers one full-state update.
+		nodes: rest.nodes.map(({ resources, ...node }) => ({
+			...node, resourceAvailable: resources?.ok ?? null,
+		})),
+	});
+}
+
 export function startDashboardServer(
 	store: FleetStore,
 	port = 8080,
@@ -1659,19 +1749,14 @@ export function startDashboardServer(
 	};
 	// A read-only view (ui --read-only) only displays; it never probes or records.
 	if (live && health && !health.readOnly) healthTimer = setTimeout(observeHealth, 0);
-	const snapshot = () => getDashboardState(store, runtime(), probes(), streams ? (nodeId) => streams.latest(nodeId) : undefined, health);
-	/** Compare without generatedAt: that stamp alone must not force a 2s republish. */
-	const pushKey = (state: DashboardState) => {
-		const { generatedAt: _generatedAt, ...rest } = state;
-		return JSON.stringify(rest);
-	};
+	const snapshot = () => getDashboardState(store, runtime(), probes(), streams ? (nodeId) => streams.latest(nodeId) : undefined, health, streams?.sshEvidence);
 	// Push the full state to connected browsers when it changes; nothing runs while nobody is watching.
 	// Unchanged snapshots are not republished every SAMPLE_MS (avoids busy idle hubs).
 	let lastPushKey: string | undefined;
 	const pushTick = () => {
 		if (!server || server.subscriberCount(TOPIC) <= 0) return;
 		const state = snapshot();
-		const key = pushKey(state);
+		const key = dashboardPushKey(state);
 		if (key === lastPushKey) return;
 		lastPushKey = key;
 		server.publish(TOPIC, JSON.stringify({ type: "state", state }));
@@ -1730,7 +1815,7 @@ export function startDashboardServer(
 				const firstSubscriber = server.subscriberCount(TOPIC) === 0;
 				ws.subscribe(TOPIC);
 				const state = snapshot();
-				if (firstSubscriber) lastPushKey = pushKey(state);
+				if (firstSubscriber) lastPushKey = dashboardPushKey(state);
 				ws.send(JSON.stringify({ type: "state", state }));
 			},
 			// View-only channel: inbound messages are ignored.

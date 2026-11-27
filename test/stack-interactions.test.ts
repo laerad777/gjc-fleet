@@ -2,11 +2,11 @@ import { afterEach, describe, expect, test } from "bun:test";
 import { readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { runInNewContext } from "node:vm";
+import { renderDashboardFixture } from "./dashboard-vm";
 import { ClawhipControl, controlBinding } from "../src/clawhip-control";
 import type { NodeConfig, TaskInput, TaskRecord } from "../src/contracts";
 import { observationDigest } from "../src/core";
-import { getDashboardState, getDashboardTask, renderDashboardHtml, type DashboardState } from "../src/dashboard";
+import { getDashboardState, getDashboardTask, type DashboardState } from "../src/dashboard";
 import { LATE_RECEIPT_WINDOW_MS } from "../src/execution";
 import { Fleet, retainedResult } from "../src/fleet";
 import { operatorReleaseResource, returnResources } from "../src/resource-return";
@@ -515,15 +515,6 @@ describe("hand-resolved hunks keep both guards (STACK.md C1, C4)", () => {
 		});
 });
 
-// Executes the public page's own script with local DOM adapters (as dashboard-completion-labels.test.ts).
-class Element {
-	innerHTML = "";
-	textContent = "";
-	className = "";
-	lastElementChild = { textContent: "" };
-	classList = { add() {}, remove() {}, toggle() {} };
-	addEventListener() {}
-}
 async function select(html: string, selector: string) {
 	const matches: Array<{ text: string; className: string }> = [];
 	await new HTMLRewriter().on(selector, {
@@ -533,21 +524,7 @@ async function select(html: string, selector: string) {
 	return matches;
 }
 async function render(state: DashboardState) {
-	const elements = new Map<string, Element>();
-	let script = "";
-	await new HTMLRewriter()
-		.on("[id]", { element(element) { elements.set(element.getAttribute("id")!, new Element()); } })
-		.on("script", { text(chunk) { script += chunk.text; } })
-		.transform(new Response(renderDashboardHtml())).text();
-	runInNewContext(script, {
-		document: { getElementById: (id: string) => elements.get(id)!, body: new Element(), querySelector: () => new Element(), querySelectorAll: () => [] },
-		fetch: async () => ({ ok: true, json: async () => JSON.parse(JSON.stringify(state)) }),
-		WebSocket: class {},
-		location: { protocol: "http:", host: "dashboard.invalid" },
-		setTimeout: () => 0,
-		setInterval: () => 0,
-	});
-	await new Promise<void>((resolve) => setImmediate(resolve));
+	const elements = await renderDashboardFixture(state);
 	return { tasks: elements.get("tasks")!.innerHTML, nodes: elements.get("nodes")!.innerHTML, outcome: elements.get("outcome")!.innerHTML };
 }
 

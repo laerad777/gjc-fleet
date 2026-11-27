@@ -673,7 +673,10 @@ export async function oneShot(
 		for (const reader of readers) reader.cancel().catch(() => {});
 	}
 }
-if (import.meta.main) {
+// Bun bundles use the output file’s import.meta.main even for an inlined module.
+// The build disables this launcher only when bundling the other entrypoints.
+declare const __GJC_FLEET_SKIP_EMBEDDED_NODE_ENTRY__: boolean | undefined;
+if (import.meta.main && (typeof __GJC_FLEET_SKIP_EMBEDDED_NODE_ENTRY__ === "undefined" || !__GJC_FLEET_SKIP_EMBEDDED_NODE_ENTRY__)) {
 	const progress: OperationProgress = { executed: false };
 	const { line, exitCode } = await answer(progress, async () => {
 		const config = process.argv[2];
