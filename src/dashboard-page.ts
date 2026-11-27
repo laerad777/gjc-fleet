@@ -175,9 +175,9 @@ header .rt .live.retry{color:var(--warn)}
 .fchip:disabled:hover{border-color:var(--line);color:var(--dim)}
 .fchip.clear{border-style:dashed;color:var(--mut);box-shadow:none}
 .fchip[hidden]{display:none}
-#fstat{margin-top:var(--sp-2);font-size:11px;letter-spacing:.06em;color:var(--mut)}
-@media(min-width:701px){#fstat{position:absolute;margin:var(--sp-1) 0 0}}
+#fstat{--fstat-h:16px;margin-top:var(--sp-2);font-size:11px;letter-spacing:.06em;color:var(--mut)}
 #fstat:empty{display:none}
+@media(min-width:701px){#fstat{margin-top:var(--sp-1);min-height:var(--fstat-h);line-height:var(--fstat-h)}#fstat:empty{display:block}}
 .node.dim{opacity:.16;filter:saturate(.3)}
 #links path,#links circle{transition:opacity .35s var(--ease)}
 /* Many nodes: orb, label and balloon sizes come from --n/--nf/--bs set per node count; the hub shrinks with --hs. */
@@ -524,7 +524,9 @@ header .hd{align-self:stretch}
 .foot{display:contents}
 .foot .lg,.foot .hint{position:absolute;z-index:2}
 .hint{left:0;right:0;text-align:center;bottom:104px;font-size:13px}
-#zc{right:14px;bottom:140px;--ctl-h:var(--ctl-h-touch);--ctl-seg-w:var(--ctl-h-touch)}#find-btn{font-size:13px}#star-x{width:44px}
+#zc{right:14px;bottom:140px;--ctl-h:var(--ctl-h-touch);--ctl-seg-w:var(--ctl-h-touch)}
+.zseg{box-sizing:content-box}
+#find-btn{font-size:13px}#star-x{width:44px}
 /* tight rows: the focus pill stands in for the find button; the popup anchors to the whole control row */
 #zc.star #find-node{display:none}
 #find-node{position:static}
@@ -1298,12 +1300,16 @@ ${'<div class="grab" id="grab" role="button" tabindex="0" aria-label="Resize det
 		var st=$('fstat');if(st)st.textContent=any?'Showing '+shown+' of '+V.nodes.length+' nodes':'';
 		try{history.replaceState(null,'',location.pathname+location.search+(any?'#flt='+fltSig():''))}catch(e){}
 	}
+	function focusFirstEnabledFilter(){
+		for(var i=0;i<FACETS.length;i++){var b=fBtns&&fBtns[FACETS[i].key];if(b&&!b.disabled){b.focus();return b}}
+		return null;
+	}
 	$('fbar').addEventListener('click',function(e){
 		var b=e.target&&e.target.closest?e.target.closest('.fchip'):null;if(!b)return;
 		var k=b.getAttribute('data-f');
 		if(k==='__clear')fOn=Object.create(null);else fOn[k]=!fOn[k];
 		renderFilters();applyFilters();
-		if(k==='__clear'&&fBtns&&fBtns[FACETS[0].key])fBtns[FACETS[0].key].focus();
+		if(k==='__clear')focusFirstEnabledFilter();
 	});
 	(function(){var m=/(?:^|[#&])flt=([a-z0-9,]*)/.exec(location.hash||'');if(m&&m[1])m[1].split(',').forEach(function(k){if(FACETS.some(function(f){return f.key===k}))fOn[k]=true})})();
 	function stLabel(v){return v.vis==='busy'&&!(v.obs>0)?'Marked active':ST[v.vis]}
@@ -1657,6 +1663,11 @@ ${'<div class="grab" id="grab" role="button" tabindex="0" aria-label="Resize det
 		var kf=Math.min(1,(R.x1-R.x0)/(CB.x1-CB.x0),(R.y1-R.y0)/(CB.y1-CB.y0));
 		var cmx=(CB.x0+CB.x1)/2,cmy=(CB.y0+CB.y1)/2;
 		FIT={k:kf,x:(R.x0+R.x1)/2-cmx*kf,y:(R.y0+R.y1)/2-cmy*kf};
+		if(COARSE&&NS0*kf<HIT_MIN){
+			kf=HIT_MIN/NS0;
+			var gone=V.nodes.filter(function(v){return v.vis==='fail'||v.vis==='down'}).map(function(v){return pos[v.id]}).filter(Boolean)[0];
+			FIT=gone?{k:kf,x:W/2-gone.x*kf,y:H/2-gone.y*kf}:{k:kf,x:(R.x0+R.x1)/2-cmx*kf,y:R.y0-CB.y0*kf};
+		}
 	}
 	/* ---- zoom and pan: the map layer is one transformed element; scale 1 is the fit view ---- */
 	function clampView(){
