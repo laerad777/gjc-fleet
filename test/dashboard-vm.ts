@@ -26,7 +26,9 @@ class DashboardElement {
 	addEventListener() {}
 	querySelector() { return null; }
 	querySelectorAll() { return []; }
-	appendChild() {}
+	children: unknown[] = [];
+	appendChild(child: unknown) { this.children.push(child); return child; }
+	get lastChild() { return this.children[this.children.length - 1]; }
 	remove() {}
 }
 
@@ -46,6 +48,7 @@ export async function renderDashboardFixture(state: DashboardState) {
 		document: {
 			getElementById: byId,
 			createElement: () => new DashboardElement(),
+			createTextNode: (text: string) => { const e = new DashboardElement(); e.textContent = String(text); return e; },
 			querySelector: (selector: string) => selector === "header" ? { offsetHeight: 110 } : new DashboardElement(),
 			querySelectorAll: () => [],
 			body: new DashboardElement(),

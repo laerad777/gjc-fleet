@@ -1857,7 +1857,7 @@ header .lease{margin-top:5px;padding:6px 8px}
 		g.p.setAttribute('class','lk'+(down?' down':'')+(go?' go':''));
 		g.p.setAttribute('marker-end','url(#lk-me-'+out+')');
 		g.p.setAttribute('marker-start','url(#lk-ms-'+inn+')');
-		g.s0.setAttribute('class','gs-'+inn);g.s1.setAttribute('class','gs-'+out);
+		if(g.s0)g.s0.setAttribute('class','gs-'+inn);if(g.s1)g.s1.setAttribute('class','gs-'+out);
 		if(g.h)g.h.setAttribute('aria-label',(down?'Path down. ':'')+'SSH hub to '+v.id+': '+SSL[out]+'. '+v.id+' to hub: '+SSL[inn]);
 		if(!first)g.p.classList.add('pulse');
 	}
