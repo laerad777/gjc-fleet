@@ -64,6 +64,7 @@ export async function renderDashboardFixture(state: DashboardState) {
 		WebSocket: class {},
 		location: { protocol: "http:", host: "dashboard.invalid" },
 		setTimeout: () => 0,
+		clearTimeout: () => {},
 		setInterval: () => 0,
 	});
 	await new Promise<void>((resolve) => setImmediate(resolve));
