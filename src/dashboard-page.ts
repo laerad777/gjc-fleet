@@ -762,7 +762,9 @@ header .lease{margin-top:5px;padding:6px 8px}
 	function chipEl(id,cls,label){var el=$(id);el.className='chip '+cls;el.lastElementChild.textContent=label}
 	var RELEASED_UNCONFIRMED='Released by operator · session end not confirmed (may still be running on the node)';
 	function chip(cls,label,lead){return '<span class="chip '+cls+'">'+(lead||'<b></b>')+'<span>'+esc(label)+'</span></span>'}
-	function put(id,key,html){var s=JSON.stringify(key);if(sig[id]===s)return false;var el=$(id);if(sig[id]!==undefined)el.classList.add('settled');sig[id]=s;el.innerHTML=html;return true}
+	/* html may be a builder: it runs only after the key says the section changed, so a push that
+	 * changes nothing in a section skips its HTML build as well as the DOM write. */
+	function put(id,key,html){var s=JSON.stringify(key);if(sig[id]===s)return false;var el=$(id);if(sig[id]!==undefined)el.classList.add('settled');sig[id]=s;el.innerHTML=typeof html==='function'?html():html;return true}
 
 	function flowHtml(p){
 		return p.stages.map(function(s){
@@ -1016,12 +1018,12 @@ header .lease{margin-top:5px;padding:6px 8px}
 		put('flow',d.pipeline,flowHtml(d.pipeline));
 		$('flow').className='flow'+(s.activeTasks>0?' busy':'');
 		put('outcome',[d.pipeline.outcome,s.queuedTasks,s.unplaceableTasks,s.activeTasks],outcomeHtml(d));
-		put('tasks',[d.tasks,d.archivedTasks,s.omittedTasks,s.omittedArchived,detailCache,detailLoad,detailError,folds,open],tasksHtml(d.tasks.map(withDetail),d.archivedTasks.map(withDetail),s.omittedTasks||0,s.omittedArchived||0));
+		put('tasks',[d.tasks,d.archivedTasks,s.omittedTasks,s.omittedArchived,detailCache,detailLoad,detailError,folds,open],function(){return tasksHtml(d.tasks.map(withDetail),d.archivedTasks.map(withDetail),s.omittedTasks||0,s.omittedArchived||0)});
 		refreshOpenDetails();
 
 		$('n-count').textContent=s.totalNodes+' nodes';
 		put('nodes',d.nodes.map(function(n){var c={};for(var k in n)c[k]=n[k];delete c.resources;c.probe=n.probe&&{o:n.probe.ok,p:n.probe.probed,v:n.probe.version,e:n.probe.error,l:n.probe.liveSessions,t:n.probe.totalSessions,se:n.probe.sessionsError};return c}),
-			d.nodes.length?d.nodes.map(nodeHtml).join(''):'<div class="empty">No nodes registered</div>');
+			function(){return d.nodes.length?d.nodes.map(nodeHtml).join(''):'<div class="empty">No nodes registered</div>'});
 		var resEls=Object.create(null);
 		document.querySelectorAll('[data-res]').forEach(function(el){var k=el.getAttribute('data-res');(resEls[k]||(resEls[k]=[])).push(el)});
 		d.nodes.forEach(function(n){applyRes(n,resEls[n.id]||[])});patchMs(d);
@@ -1030,10 +1032,10 @@ header .lease{margin-top:5px;padding:6px 8px}
 		var liveAll=0,known=0;
 		d.nodes.forEach(function(n){if(n.probe&&n.probe.sessionsOk){liveAll+=n.probe.liveSessions;known++}});
 		$('s-count').textContent=known?'Active '+liveAll+' · '+known+'/'+d.nodes.length+' nodes queried':'';
-		put('tabs',[tab,d.nodes.map(function(n){return [n.id,n.probe&&n.probe.liveSessions,n.probe&&n.probe.totalSessions]})],d.nodes.map(function(n){
+		put('tabs',[tab,d.nodes.map(function(n){return [n.id,n.probe&&n.probe.liveSessions,n.probe&&n.probe.totalSessions]})],function(){return d.nodes.map(function(n){
 			var p=n.probe,c=p&&p.sessionsOk?p.liveSessions+'/'+p.totalSessions:p?'–':'…';
 			return '<button data-tab="'+esc(n.id)+'" class="'+(n.id===tab?'sel':'')+'">'+esc(n.id)+'<small>'+c+'</small></button>';
-		}).join(''));
+		}).join('')});
 		var cur=d.nodes.filter(function(n){return n.id===tab})[0];
 		put('sessions',cur?[tab,cur.probe&&cur.probe.checkedAt&&cur.probe.sessions,cur.probe&&[cur.probe.ok,cur.probe.error,cur.probe.sessionsError]]:null,cur?sessHtml(cur):'<div class="empty">No nodes</div>');
 	}
