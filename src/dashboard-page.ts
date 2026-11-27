@@ -598,7 +598,8 @@ header .lease{margin-top:5px;padding:6px 8px}
 #world.gr .q{display:none}
 #world.gr #links path.fl,#world.gr #links path.draw{display:none}
 /* queue summary: one tappable pill under the hub instead of orbiting markers */
-.ql.pill{pointer-events:auto;cursor:pointer;white-space:nowrap;padding:8px 14px;border-radius:999px;background:var(--panel-hi);border:1px solid var(--line-hi);color:var(--sub);font-size:11px;letter-spacing:.1em;box-shadow:0 8px 20px -12px rgba(50,50,150,.4)}
+.ql.pill{pointer-events:auto;cursor:pointer;white-space:nowrap;padding:8px 14px;border-radius:999px;background:var(--panel-hi);
+	border:1px solid var(--line-hi);color:var(--sub);font-size:11px;letter-spacing:.1em;box-shadow:none}
 /* node filter bar: horizontal scroll with an edge fade, 44px touch height (labels shortened in the <=480px block) */
 #fbar{flex-wrap:nowrap;overflow-x:auto;max-width:100%;scrollbar-width:none;padding-bottom:4px;-webkit-mask-image:linear-gradient(90deg,#000 80%,transparent);mask-image:linear-gradient(90deg,#000 80%,transparent)}
 #fbar::-webkit-scrollbar{display:none}
