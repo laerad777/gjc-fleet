@@ -42,7 +42,9 @@ class Element {
 	removeAttribute(name: string) { this.attrs.delete(name); }
 	querySelector() { return null; }
 	querySelectorAll() { return []; }
-	appendChild(child: unknown) { return child; }
+	children: unknown[] = [];
+	appendChild(child: unknown) { this.children.push(child); return child; }
+	get lastChild() { return this.children[this.children.length - 1]; }
 	remove() {}
 	closest() { return null; }
 	getBoundingClientRect() { return { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 }; }
@@ -88,6 +90,7 @@ async function page(initial: DashboardState) {
 			documentElement: new Element(),
 			addEventListener: () => {},
 			createElement: () => new Element(),
+			createTextNode: (text: string) => { const e = new Element(); e.textContent = String(text); return e; },
 			querySelector: (selector: string) => {
 				if (selector === "main") return main;
 				return new Element();

@@ -33,7 +33,9 @@ class Element {
 	removeAttribute(name: string) { this.attrs.delete(name); }
 	querySelector() { return null; }
 	querySelectorAll() { return []; }
-	appendChild(child: unknown) { return child; }
+	children: unknown[] = [];
+	appendChild(child: unknown) { this.children.push(child); return child; }
+	get lastChild() { return this.children[this.children.length - 1]; }
 	remove() {}
 	closest() { return null; }
 	getBoundingClientRect() { return { left: 0, top: 0, right: 0, bottom: 0, width: 0, height: 0 }; }
@@ -78,6 +80,7 @@ async function page(initial: DashboardState) {
 			documentElement: new Element(),
 			addEventListener: () => {},
 			createElement: () => new Element(),
+			createTextNode: (text: string) => { const e = new Element(); e.textContent = String(text); return e; },
 			querySelector: (selector: string) => (selector === "main" ? main : new Element()),
 			// Resource meter patching is outside these label tests; initial node HTML is captured.
 			querySelectorAll: () => [],
@@ -279,11 +282,11 @@ test("critical paths do not count a merely assigned task as in flight", async ()
 	fixture.nodes[0]!.status = { level: "down", reasons: ["coordinator_unreachable"] };
 	fixture.nodes[0]!.tasksAtRisk = { count: 1, taskIds: [fixture.tasks[0]!.id] };
 	const browser = await page(fixture);
-	expect(browser.element("sum").innerHTML).toContain("In flight</span><strong>0");
-	expect(browser.element("sum").innerHTML).toContain("Needs eyes</span><strong>1");
+	expect(browser.element("sum").innerHTML).toContain("Running</span><strong>0");
+	expect(browser.element("sum").innerHTML).toContain("Needs attention</span><strong>1");
 	expect(browser.element("hl").innerHTML).not.toContain("still running");
 	fixture.summary.overall = { state: "degraded", confirmedRunning: 1, reasons: ["node_paths_down"] };
 	browser.update(fixture);
 	expect(browser.element("ov-t").textContent).toBe("Down");
-	expect(browser.element("sum").innerHTML).toContain("In flight</span><strong>0");
+	expect(browser.element("sum").innerHTML).toContain("Running</span><strong>0");
 });

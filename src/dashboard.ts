@@ -375,7 +375,7 @@ function nodeHealthView(health: ReturnType<NodeHealthHistory["dimensions"]>, nod
 		consecutiveGood: health.consecutiveGood,
 		required: health.required,
 		...(health.latest ? { latestAt: health.latest.at } : {}),
-		freshness: dashboardHealthFreshness([health.latest?.at], now, HEALTH_OBSERVE_MS * 3),
+		freshness: dashboardHealthFreshness([health.latest?.at], now, HEALTH_OBSERVE_MS),
 		...(health.lastFailure ? { lastFailure: { at: health.lastFailure.at, dimensions: health.lastFailure.dimensions } } : {}),
 	};
 }
@@ -1205,7 +1205,7 @@ export function getDashboardState(
 		archivedTasks: archivedListed,
 		...(daemon ? { daemon } : {}),
 		hub: { lease },
-		...(gating ? { nodeHealth: gating, health: { gating: gating.gating, freshness: dashboardHealthFreshness(healthObservations, now, HEALTH_OBSERVE_MS * 3) } } : {}),
+		...(gating ? { nodeHealth: gating, health: { gating: gating.gating, freshness: dashboardHealthFreshness(healthObservations, now, HEALTH_OBSERVE_MS) } } : {}),
 	});
 }
 

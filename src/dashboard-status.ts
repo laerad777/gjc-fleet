@@ -19,7 +19,9 @@ export type DashboardHubLease = {
 	lastCycleAt: string | null;
 };
 export type DashboardHealthFreshness = {
-	state: "fresh" | "stale" | "none";
+	/** fresh: latest observation inside one cycle; late: at least one observation missed but the grace
+	 * window (healthchecks-style) has not run out; stale: grace exhausted; none: nothing observed. */
+	state: "fresh" | "late" | "stale" | "none";
 	checkedAt: string | null;
 };
 
@@ -32,8 +34,11 @@ function fresh(at: number | undefined, now: number, maxAge: number): boolean {
 }
 const iso = (at: number | undefined) => at === undefined ? null : new Date(at).toISOString();
 
-/** Presentation age only. Never feed wall clock freshness back into health or admission decisions. */
-export function dashboardHealthFreshness(observations: readonly (number | undefined)[], now: number, maxAge: number): DashboardHealthFreshness {
+/** Presentation age only. Never feed wall clock freshness back into health or admission decisions.
+ * `intervalMs` is the expected observation cycle. Late starts only after one whole cycle was missed
+ * (2× the interval), so ordinary scheduler and probe jitter never shows as late; `graceMs` (default
+ * 3× the interval) is where lateness exhausts its grace and becomes stale. */
+export function dashboardHealthFreshness(observations: readonly (number | undefined)[], now: number, intervalMs: number, graceMs: number = intervalMs * 3): DashboardHealthFreshness {
 	let oldest: number | undefined;
 	let missing = observations.length === 0;
 	for (const at of observations) {
@@ -41,7 +46,10 @@ export function dashboardHealthFreshness(observations: readonly (number | undefi
 		if (stamp === undefined || stamp > now) { missing = true; continue; }
 		oldest = Math.min(oldest ?? stamp, stamp);
 	}
-	if (oldest !== undefined && !fresh(oldest, now, maxAge)) return { state: "stale", checkedAt: iso(oldest) };
+	if (oldest !== undefined) {
+		if (!fresh(oldest, now, graceMs)) return { state: "stale", checkedAt: iso(oldest) };
+		if (!fresh(oldest, now, intervalMs * 2)) return { state: "late", checkedAt: iso(oldest) };
+	}
 	if (missing) return { state: "none", checkedAt: null };
 	return { state: "fresh", checkedAt: iso(oldest) };
 }
