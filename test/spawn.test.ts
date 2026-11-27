@@ -1,5 +1,5 @@
 import { afterAll, afterEach, beforeAll, expect, spyOn, test } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { FLEET_GIT_NAME, GIT_HARDENING, isolatedGitEnvironment, NULL_DEVICE, resolveProgram, spawnGit, spawnGitSync, spawnTrusted, trustedPathValue, UntrustedProgramError } from "../src/spawn";
@@ -328,4 +328,18 @@ test("spawnGitSync refuses a planted git under the repository even when PATH lea
 	expect(P.ran()).toEqual([]);
 	expect(resolveProgram("git", { untrusted: [f.repo] })).toBe(realGit);
 	expect(planted).not.toBe(realGit);
+});
+
+const chmodEnforced = !WIN && process.getuid?.() !== 0;
+test.skipIf(!chmodEnforced)("trustedPathValue drops a PATH entry the process cannot traverse instead of failing", () => {
+	const denied = dir("path-value-denied");
+	const locked = join(denied, "locked");
+	mkdirSync(join(locked, "bin"), { recursive: true });
+	process.env.PATH = [join(locked, "bin"), gitDir].join(DELIM);
+	chmodSync(denied, 0);
+	try {
+		expect(trustedPathValue()).toBe(gitDir);
+	} finally {
+		chmodSync(denied, 0o700);
+	}
 });
