@@ -1,0 +1,13 @@
+# CodeRabbit 설정 (V3, GitHub Cloud 호스티드 리뷰)
+# 출처: https://docs.coderabbit.ai/pr-reviews/automatic-approvals , https://docs.coderabbit.ai/reference/configuration-v3
+# min_blocking_severity 미설정: 조치가 필요한 지적이 하나라도 있으면 자동 승인하지 않음.
+# approve_on_skipped_review 기본값 false 유지.
+version: 3
+language: ko-KR
+reviews:
+  behavior:
+    profile: chill
+    auto_approvals:
+      enabled: true
+  auto_review:
+    drafts: true
