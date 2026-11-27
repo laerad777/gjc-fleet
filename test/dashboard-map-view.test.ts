@@ -4,8 +4,9 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { NodeConfig } from "../src/contracts";
 import { dashboardSshEvidence, dashboardSshLinks, dashboardSshRoute, dashboardTaskAttention } from "../src/dashboard-map-view";
-import { startDashboardServer, type DashboardState } from "../src/dashboard";
+import { getDashboardState, startDashboardServer, type DashboardState } from "../src/dashboard";
 import { FleetStore } from "../src/store";
+import { renderDashboardFixture } from "./dashboard-vm";
 
 const evidence = { executionTerminal: false, exportReview: false, receiptConflict: false, resultSaved: false, unplaceable: false };
 const checkedAt = "2026-01-01T00:00:00.000Z";
@@ -67,6 +68,27 @@ test("read-only dashboard JSON with node probes disabled never claims configured
 			expect(state.nodes[0]?.admission).toBeNull();
 			expect(state.nodes[0]).not.toHaveProperty("laneCapacity");
 		} finally { server.stop(true); }
+	} finally {
+		store.close();
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("link tip opens for a node without SSH evidence instead of throwing", async () => {
+	const dir = mkdtempSync(join(tmpdir(), "fleet-dashboard-link-"));
+	const store = new FleetStore(join(dir, "fleet.db"));
+	try {
+		store.putNode(node);
+		store.putNode({ ...node, id: "local", sdkTransport: { command: "gjc", args: [] }, transport: { command: "gjc", args: [] } });
+		const state = getDashboardState(store);
+		expect(state.sshLinks?.map((l) => l.nodeId)).toEqual([node.id]);
+		const els = await renderDashboardFixture(state);
+		const tip = els.get("tip")!;
+		for (const id of ["lkh0", "lkh1"]) {
+			tip.innerHTML = "";
+			expect(() => (els.get(id) as any).onmouseenter({ clientX: 1, clientY: 1 })).not.toThrow();
+			expect(tip.innerHTML).toContain("never checked from this side");
+		}
 	} finally {
 		store.close();
 		rmSync(dir, { recursive: true, force: true });

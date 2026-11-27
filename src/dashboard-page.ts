@@ -73,20 +73,18 @@ h1 .ov.unk .od{background:transparent;box-shadow:0 0 0 1.5px #9aa0bd inset}
 @keyframes ping{0%{transform:scale(.6);opacity:.9}100%{transform:scale(2.1);opacity:0}}
 header,.nm,.ql,.hub small,.lg,.hint,#tip,.dl{line-height:normal}
 header .rt .live{position:absolute;top:9px;right:44px;margin:0;padding:0;border:0;background:none;font-size:11px;letter-spacing:.04em;color:var(--dim)}
-header .rt .live.down{color:#b42a3a}
-.live.down{color:#b42a3a;border-color:rgba(239,74,91,.4)}
-.live.down .dot{background:var(--rose)}.live.down .dot::after{border-color:var(--rose)}
+header .rt .live.down,header .rt .live.off{color:#b42a3a}
+.live.down,.live.off{color:#b42a3a;border-color:rgba(239,74,91,.4)}
+.live.down .dot,.live.off .dot{background:var(--rose)}
+.live.down .dot::after,.live.off .dot::after{border-color:var(--rose)}
 header .rt .live.wait{color:var(--warn)}
 header .rt .live.retry{color:var(--warn)}
-header .rt .live.off{color:#b42a3a}
 .live.wait{color:var(--warn)}
 .live.wait .dot{background:var(--amber)}.live.wait .dot::after{border-color:var(--amber)}
 .live.retry{color:var(--warn);border-color:rgba(240,165,42,.4)}
 .live.retry .dot{background:var(--amber)}.live.retry .dot::after{border-color:var(--amber);animation:none}
-.live.off{color:#b42a3a;border-color:rgba(239,74,91,.4)}
-.live.off .dot{background:var(--rose)}.live.off .dot::after{border-color:var(--rose);animation:none}
+.live.off .dot::after{animation:none}
 .sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
-.fresh{display:none;align-items:center;gap:8px;margin-top:10px;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:#8a5206}
 .fresh{display:none;align-items:center;gap:8px;margin-top:var(--sp-3);font-size:0.6875rem;letter-spacing:.14em;text-transform:uppercase;color:#8a5206}
 .fresh.on{display:flex}
 .fresh b{font-weight:600}
@@ -153,13 +151,12 @@ header .rt .live.off{color:#b42a3a}
 #find-list li{min-height:var(--ctl-h);display:flex;align-items:center;gap:8px;padding:0 10px;border-radius:10px;font-size:13px;color:var(--sub);cursor:pointer}
 #find-list li:hover{background:rgba(91,91,240,.06)}
 #find-list li[aria-selected="true"]{background:rgba(91,91,240,.1);color:var(--text)}
-#find-list li .fdot{width:7px;height:7px;border-radius:50%;flex:none}
+#find-list li .fdot,#star-pill .fdot{width:7px;height:7px;border-radius:50%;flex:none}
 #find-list li.none{color:var(--dim);cursor:default}
 #find-list li.none:hover{background:none}
 /* star focus indicator (ported from ha-zigbee-mesh-map's star pill): chip tokens, explicit exit */
 #star-pill{display:inline-flex;align-items:center;gap:7px;height:var(--ctl-h);padding:0 6px 0 13px;border:1px solid var(--ctl-border);border-radius:var(--ctl-radius);background:var(--ctl-bg);box-shadow:var(--ctl-shadow);color:var(--text);font-size:0.8125rem;font-weight:500;letter-spacing:.01em}
 #star-pill[hidden]{display:none}
-#star-pill .fdot{width:7px;height:7px;border-radius:50%;flex:none}
 #star-pill span{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #star-x{width:32px;border:0;border-radius:0 var(--ctl-radius) var(--ctl-radius) 0;background:transparent;color:var(--mut);cursor:pointer;display:grid;place-items:center}
 #star-x:hover{background:rgba(91,91,240,.1);color:var(--text)}
@@ -189,8 +186,9 @@ header .rt .live.off{color:#b42a3a}
 #world.sc .bl.wait{bottom:14%;right:10%;transform-origin:100% 100%;transform:scale(var(--bs,1)) translate(50%,50%)}
 #world.sc .nm{top:calc(86.4% + 2px)}
 #world.sc .nm b{font-size:var(--nf,15px);max-width:var(--lw,200px);overflow:hidden;text-overflow:ellipsis}
-#world.sc .nm span{font-size:var(--nf2,11px);letter-spacing:.02em}
+#world.sc .nm span{font-size:var(--nf2,11px);letter-spacing:.02em;display:none}
 #world.sc .nchips{margin-top:2px;gap:3px}
+#world.sc .node:hover .nm span,#world.sc .node:focus-within .nm span{display:inline}
 #world.sc.dn .nm span{display:none}
 #world.sc.dn .nchip{font-size:0;padding:0;gap:0;background:none;box-shadow:none;letter-spacing:0}
 #world.sc.dn .nchip.dn u{width:9px;height:9px}
@@ -242,6 +240,7 @@ svg#links{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .ring{position:absolute;inset:0;width:100%;height:100%;overflow:visible}
 .nm{position:absolute;top:calc(100% - 4px);left:50%;transform:translateX(-50%);text-align:center;white-space:nowrap}
 .nm b{font-family:var(--disp);font-size:15px;font-weight:600;display:block}
+.nm .arch{vertical-align:-.1em;margin-right:.3em;color:var(--mut)}
 .nm span{font-size:11px;color:var(--mut);letter-spacing:.04em}
 .bl{position:absolute;min-width:30px;height:30px;padding:0 8px;border-radius:15px 15px 15px 4px;display:grid;place-items:center;font-size:14px;font-weight:700;color:#fff;font-variant-numeric:tabular-nums}
 .bl.run{top:4.5%;right:-4.5%;background:linear-gradient(140deg,var(--ac),#7a6bff);box-shadow:0 8px 20px -4px rgba(91,91,240,.7)}
@@ -254,6 +253,7 @@ svg#links{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .nchip.dn u{width:6px;height:6px;border-radius:50%;background:var(--rose);text-decoration:none}
 .nchip.dg,.nchip.rk{color:#8a5206;background:rgba(240,165,42,.13);box-shadow:0 0 0 1px rgba(240,165,42,.4) inset}
 .nchip.pz{color:var(--sub);background:rgba(91,91,240,.07);box-shadow:0 0 0 1px var(--line-hi) inset}
+.nchip.pz u{width:6px;height:6px;border-radius:50%;box-shadow:0 0 0 1.2px currentColor inset;text-decoration:none}
 .busy .ring .sp{transform-origin:66px 66px;animation:spin 3.2s linear infinite}
 .busy .ring .sp2{transform-origin:66px 66px;animation:spin 5.5s linear infinite reverse}
 .busy .orb{animation:breathe 2.2s ease-in-out infinite}
@@ -1059,13 +1059,19 @@ header .lease{margin-top:5px;padding:6px 8px}
 	var RM=false,MOB=false,NS=132,W=0,H=0,RMQ=null;
 	/* .hub is 150x150 in CSS (scaled by --hs); the queue label parks below whichever reaches lower: the hub box or the lowest queue chip. Gap is --sp-2 (8px). */
 	var HUBBOX=150,QCHIP=30;
-	function queueLow(qs){if(!qs||!qs.length)return 0;var m=0;for(var i=0;i<qs.length;i++)m=Math.max(m,Math.sin((-90+(i-(qs.length-1)/2)*50)*Math.PI/180));return m*QR()+QCHIP/2*HS}
+	function queueLow(qs){
+		if(!qs||!qs.length)return 0;
+		var m=0;
+		for(var i=0;i<qs.length;i++)m=Math.max(m,Math.sin((-90+(i-(qs.length-1)/2)*50)*Math.PI/180));
+		return m*QR()+QCHIP/2*HS
+	}
 	try{RMQ=matchMedia('(prefers-reduced-motion: reduce)');RM=RMQ.matches}catch(e){}
 	var COARSE=false;try{COARSE=matchMedia('(pointer:coarse)').matches}catch(e){}
 	var HIT_MIN=44;/* keep in sync with --hit-min; WCAG 2.5.5 / platform HIG minimum touch target */
 	var stage=$('world'),vp=$('stage'),links=$('links'),tip=$('tip'),sheet=$('sheet'),veil=$('veil'),dw=$('dw');
 	var sheetAnchor=null,pollPending=false,BO=Object.create(null),knownIds=Object.create(null),pvis=Object.create(null),rafLive=false;
-	var BS=1,HS=1,DLIM=Object.create(null),DENSE=false,fontsReady=false,mapDeferred=false,viewTouched=false,VW={k:1,x:0,y:0},FIT={k:1,x:0,y:0},CB={x0:0,y0:0,x1:0,y1:0},KMIN=.5,KMAX=4,lastWH='',V=null,recvAt=Date.now(),NEL={},base={},pos={},off={},DRIFT=Object.create(null),HUBP={x:0,y:0},MTOP=0,MBOT=190,LNK={},hovN=null,tapped=null,lastPT='mouse',layoutSig='',qSig='',nodeSig={},mode=null,sheetNode=null,sheetSig=null,CM=false,EXP=Object.create(null),PREV=null,PREVWH='',SEED=null,OVERVIEW_PX=11,GROUP_CELL=96,HIT=44,zt=0;
+	var BS=1,HS=1,DLIM=Object.create(null),DENSE=false,fontsReady=false,mapDeferred=false,viewTouched=false,VW={k:1,x:0,y:0},FIT={k:1,x:0,y:0},CB={x0:0,y0:0,x1:0,y1:0},KMIN=.5,KMAX=4,lastWH='',V=null,recvAt=Date.now(),NEL={},base={},pos={},off={},DRIFT=Object.create(null),HUBP={x:0,y:0},MTOP=0,MBOT=190,LNK={},hovN=null,tapped=null,lastPT='mouse',layoutSig='',qSig='',nodeSig={},mode=null,sheetNode=null,sheetSig=null,CM=false,EXP=Object.create(null),PREV=null,PREVWH='',SEED=null,OVERVIEW_PX=11,GROUP_CELL=96,zt=0;
+	var CMKEY='',POOL=null,RECON_IDS=null;
 	var COL={ok:'#17b57e',wait:'#f0a52a',unk:'#b3b7cf'};
 	/* One severity rank per node, worst wins; an operator-paused node (disabled or draining) ranks as notice. */
 	var SEV_OK=1,SEV_PAUSED=2,SEV_UNKNOWN=3,SEV_DEGRADED=4,SEV_DOWN=5;
@@ -1117,7 +1123,11 @@ header .lease{margin-top:5px;padding:6px 8px}
 		tasks.forEach(function(t){var a=t.attention;if(a?(a==='failed'||a==='needs_confirmation'||a==='approval_required'||a==='unplaceable'):(UNKNOWN[t.phase]||t.phase==='failed'||t.phase==='approval_required'))attention.add(t.id)});
 		nodes.forEach(function(v){v.risk.taskIds.forEach(function(id){attention.add(id)})});
 		var needs=attention.size;
-		return {nodes:nodes,queue:q,down:down,overall:overall,lease:lease,fresh:fresh,needs:needs,running:Math.max(0,Number(overall.confirmedRunning)||0),ssh:ssh};
+		/* Plurality level (null on a tie): the header states line says it once, so per-node chips for it are repetition. */
+		var lc={},uni=null,umax=0;
+		nodes.forEach(function(v){var l=v.status.level;lc[l]=(lc[l]||0)+1});
+		for(var ul in lc)if(lc[ul]>umax){umax=lc[ul];uni=ul}else if(lc[ul]===umax)uni=null;
+		return {nodes:nodes,queue:q,down:down,overall:overall,lease:lease,fresh:fresh,needs:needs,running:Math.max(0,Number(overall.confirmedRunning)||0),ssh:ssh,uni:uni};
 	}
 	/* ---- groups: when labels cannot stay readable at fit, healthy nodes of one OS and arch collapse into a single bubble ---- */
 	var RANK={ok:0,unk:1,wait:2};
@@ -1203,14 +1213,29 @@ header .lease{margin-top:5px;padding:6px 8px}
 	}
 	function orbHtml(v){return '<div class="orb"><svg class="ic" viewBox="0 0 44 44">'+(ICON[v.os]||ICON.linux)+'</svg></div>'+ringSvg(v.vis,v.obs>0)+'<div class="bl run'+(v.raw.currentLoad?'':' zero')+'" data-testid="balloon" aria-label="'+v.raw.currentLoad+' assignments marked active">'+v.raw.currentLoad+'</div>'+(v.risk.count?'<div class="bl bad">'+v.risk.count+'</div>':'')+(v.raw.heldNotRunning&&v.status.level!=='down'?'<div class="bl wait">'+v.raw.heldNotRunning+'</div>':'')}
 	var WARN_ICON='<svg width="10" height="10" viewBox="0 0 10 10"><path d="M5 1L9.3 8.6H.7z" fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/><path d="M5 4v2M5 7.2v.1" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>';
+	var EYE_ICON='<svg width="10" height="10" viewBox="0 0 12 10">'+
+		'<path d="M1 5c1.7-2.6 3.3-3.8 5-3.8S9.3 2.4 11 5C9.3 7.6 7.7 8.8 6 8.8S2.7 7.6 1 5z" '+
+		'fill="none" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"/>'+
+		'<circle cx="6" cy="5" r="1.3" fill="currentColor"/></svg>';
+	/* Architecture at a glance without the OS · arch text line:
+	   x64 is a square chip, arm64 a diamond chip; shapes differ, not only colors. */
+	var ARCH_SVG='<svg class="arch" width="10" height="10" viewBox="0 0 12 12" role="img" aria-label=';
+	var ARCH_ICON={
+		x64:ARCH_SVG+'"x64"><rect x="2.8" y="2.8" width="6.4" height="6.4" rx="1.2" '+
+			'fill="none" stroke="currentColor" stroke-width="1.5"/></svg>',
+		arm64:ARCH_SVG+'"arm64"><rect x="3.1" y="3.1" width="5.8" height="5.8" rx="1.8" '+
+			'transform="rotate(45 6 6)" fill="currentColor"/></svg>'
+	};
 	function chipsHtml(v){
 		var o='',s=v.status;
-		if(s.level==='down')o+='<i class="nchip dn" data-testid="node-badge"><u></u>'+(MOB?'Down':'Down · '+esc(lvlReason(s.reasons[0])))+'</i>';
-		else if(s.level==='degraded')o+='<i class="nchip dg" data-testid="node-badge">'+(MOB?'Degraded':'Degraded · '+esc(lvlReason(s.reasons[0])))+'</i>';
-		else if(s.level==='unknown')o+='<i class="nchip pz">'+(MOB?'Unknown':'Health unknown')+'</i>';
+		/* Names and counts stay text; reasons move to the tip. The plurality chip drops
+		   (header states line has it). Down and at-risk never drop. */
+		if(s.level==='down')o+='<i class="nchip dn" data-testid="node-badge"><u></u>Down</i>';
+		else if(s.level==='degraded')o+='<i class="nchip dg" data-testid="node-badge">'+WARN_ICON+'Degraded</i>';
+		else if(s.level==='unknown'&&V.uni!=='unknown')o+='<i class="nchip pz">'+(MOB?'Unknown':'Health unknown')+'</i>';
 		if(v.raw.enabled===false)o+='<i class="nchip pz" data-testid="node-badge">Paused</i>';
 		else if(v.raw.draining===true)o+='<i class="nchip pz" data-testid="node-badge">Draining</i>';
-		if(v.risk.count)o+='<i class="nchip rk">'+WARN_ICON+v.risk.count+(MOB?' at risk':(v.risk.count>1?' tasks':' task')+' at risk')+'</i>';
+		if(v.risk.count)o+='<i class="nchip rk">'+EYE_ICON+v.risk.count+' at risk</i>';
 
 		return o?'<div class="nchips">'+o+'</div>':'';
 	}
@@ -1218,15 +1243,31 @@ header .lease{margin-top:5px;padding:6px 8px}
 		var cn='<b class="cnt">'+u.n+'</b>',fx=u.fl||{down:0,risk:0};
 		var o='<div class="orb"><svg class="ic" viewBox="0 0 44 44">'+(ICON[u.os]||ICON.linux)+'</svg>'+cn+'</div>'+ringSvg(u.vis)+'<div class="bl run'+(u.raw.currentLoad?'':' zero')+'" aria-label="'+u.raw.currentLoad+' assignments marked active">'+u.raw.currentLoad+'</div>'+(u.raw.heldNotRunning?'<div class="bl wait">'+u.raw.heldNotRunning+'</div>':'');
 		var ch='';
-		if(u.degN)ch+='<i class="nchip dg">'+u.degN+' degraded</i>';
-		if(u.unkN)ch+='<i class="nchip pz">'+u.unkN+' not confirmed</i>';
-		if(fx.down)ch+='<i class="nchip dn"><u></u>'+fx.down+' down, shown apart</i>';
-		if(fx.risk)ch+='<i class="nchip rk">'+WARN_ICON+fx.risk+' at risk, shown apart</i>';
+		/* Group exception counts collapse to shape + count; the words live in the group tip and its aria-label. */
+		if(u.degN)ch+='<i class="nchip dg">'+WARN_ICON+u.degN+'</i>';
+		if(u.unkN)ch+='<i class="nchip pz"><u></u>'+u.unkN+'</i>';
+		if(fx.down)ch+='<i class="nchip dn"><u></u>'+fx.down+'</i>';
+		if(fx.risk)ch+='<i class="nchip rk">'+EYE_ICON+fx.risk+'</i>';
 		return o+'<div class="nm"><b>'+esc(OSN[u.os]||u.os)+' · '+esc(u.arch)+'</b><span>'+u.n+' nodes'+(u.busyN?' · '+u.busyN+' working':'')+'</span>'+(ch?'<div class="nchips">'+ch+'</div>':'')+'</div>';
 	}
-	function groupLabel(u){return (OSN[u.os]||u.os)+' '+u.arch+' group, '+u.n+' nodes, '+u.busyN+' working'+(u.degN?', '+u.degN+' degraded':'')+'. Press to expand'}
-	function nodeInner(v){if(v.cluster)return groupInner(v);return orbHtml(v)+'<div class="nm"><b title="'+esc(v.id)+'">'+esc(v.id)+'</b><span>'+esc(OSN[v.os]||v.os)+' · '+esc(v.arch)+'</span>'+chipsHtml(v)+'</div>'}
-	function nodeKey(v){if(v.cluster)return JSON.stringify([v.vis,v.n,v.obs,v.raw.currentLoad,v.raw.heldNotRunning,v.busyN,v.degN,v.unkN,v.fl,v.out&&v.out.s,v.inn&&v.inn.s,v.members.map(function(m){return m.id})]);return JSON.stringify([v.vis,v.obs,v.raw.currentLoad,v.raw.heldNotRunning,v.risk.count,v.status.level,v.status.reasons,v.os,v.arch,fltSig()])}
+	function groupLabel(u){
+		var fx=u.fl||{down:0,risk:0};
+		return (OSN[u.os]||u.os)+' '+u.arch+' group, '+u.n+' nodes, '+u.busyN+' working'+
+			(u.degN?', '+u.degN+' degraded':'')+(u.unkN?', '+u.unkN+' not confirmed':'')+
+			(fx.down?', '+fx.down+' down, shown apart':'')+
+			(fx.risk?', '+fx.risk+' at risk, shown apart':'')+'. Press to expand';
+	}
+	function nodeInner(v){
+		if(v.cluster)return groupInner(v);
+		return orbHtml(v)+'<div class="nm"><b title="'+esc(v.id)+'">'+(ARCH_ICON[v.arch]||'')+esc(v.id)+'</b>'+
+			'<span>'+esc(OSN[v.os]||v.os)+' · '+esc(v.arch)+'</span>'+chipsHtml(v)+'</div>';
+	}
+	function nodeKey(v){
+		if(v.cluster)return JSON.stringify([v.vis,v.n,v.obs,v.raw.currentLoad,v.raw.heldNotRunning,v.busyN,
+			v.degN,v.unkN,v.fl,v.out&&v.out.s,v.inn&&v.inn.s,v.members.map(function(m){return m.id})]);
+		return JSON.stringify([v.vis,v.obs,v.raw.currentLoad,v.raw.heldNotRunning,v.risk.count,
+			v.status.level,v.status.reasons,v.os,v.arch,fltSig(),V.uni]);
+	}
 	/* 'in' only on first build: it carries the entry pop on the fresh .nbod, and a status
 	 * patch rebuilds the inner box, so replaying the class would re-pop the node every poll. */
 	function nodeCls(v,entering){var pre='node nd'+(entering?' in':'');if(v.cluster)return pre+' cl '+v.vis+(v.degN?' dg':v.unkN?' uk':'');return pre+' '+v.vis+(v.risk.count?' rk':'')+(DRIFT[v.id]&&DRIFT[v.id].stalled?' stalled':'')+(nodeMatch(v)?'':' dim')}
@@ -1736,10 +1777,16 @@ header .lease{margin-top:5px;padding:6px 8px}
 		if(!V)return;
 		var pf=document.activeElement,rn=pf&&pf.getAttribute?pf.getAttribute('data-id'):null,wh0=lastWH;
 		SEED=seedFor();
-		CM=false;mkUnits();layoutPass(rn);
-		if(canGroup()&&effFont()<OVERVIEW_PX){CM=true;mkUnits();lastWH=wh0;layoutPass(rn)}
+		/* Cluster mode follows stable inputs only (nodes, viewport, fonts), not header height; POOL keeps probe elements. */
+		POOL=Object.create(null);RECON_IDS=Object.keys(NEL).sort().join('\\n');
+		var ck=cmKey();
+		if(ck!==CMKEY){
+			CMKEY=ck;
+			CM=false;mkUnits();layoutPass(rn);
+			if(canGroup()&&effFont()<OVERVIEW_PX){CM=true;mkUnits();lastWH=wh0;layoutPass(rn)}
+		}else{mkUnits();layoutPass(rn)}
 		stage.classList.toggle('gp',CM);
-		PREV={};PREVWH=innerWidth+'x'+innerHeight;for(var k in base)PREV[k]={x:base[k].x,y:base[k].y};SEED=null;
+		PREV={};PREVWH=innerWidth+'x'+innerHeight;for(var k in base)PREV[k]={x:base[k].x,y:base[k].y};SEED=null;POOL=null;RECON_IDS=null;
 	}
 	/* Opening or closing a group keeps every other unit where it was: members start around their group bubble, a new bubble starts at its members' centre. Only valid for the same viewport. */
 	function seedFor(){
@@ -1751,30 +1798,40 @@ header .lease{margin-top:5px;padding:6px 8px}
 		Object.keys(grp).forEach(function(k){var g=grp[k];if(g.n&&!PREV['cl:'+k])sd['cl:'+k]={x:g.x/g.n,y:g.y/g.n}});
 		return sd;
 	}
+	/* Signature of the link layer on screen, written only by layoutPass below. */
+	var LAYLK='';
 	function layoutPass(restoreNode){
 		W=innerWidth;H=innerHeight;MOB=W<700;
 		var N=V.units.length,ND=V.nodes.length;
 		NS=MOB?(ND>6?84:104):(ND>6?104:132);
 		document.documentElement.style.setProperty('--n',NS+'px');
+		var HSPre=HS,NSPre=NS;
 		DENSE=ND>6;stage.classList.toggle('sc',DENSE);stage.classList.toggle('gr',MOB);stage.classList.toggle('calm',ND>18);stage.classList.remove('dn');HS=1;DLIM=Object.create(null);FIT={k:1,x:0,y:0};CB={x0:0,y0:0,x1:W,y1:H};
 		['--n','--hs','--nf','--nf2','--bs','--lw'].forEach(function(p){stage.style.setProperty(p,'')});
 		var R=syncClip();nodePicker();
-		var oldPos=pos;BO=Object.create(null);
-		stage.querySelectorAll('.node,.hub,.q,.ql').forEach(function(e){e.remove()});
-		links.innerHTML='';linkDirty=[];NEL=Object.create(null);LNK=Object.create(null);base=Object.create(null);pos=Object.create(null);off=Object.create(null);nodeSig=Object.create(null);
+		/* Reconcile, never raze: reused nodes keep their element, drift offset and patched content (patchUnits already ran). */
+		var oldOff=off,oldNEL=NEL,oldHUBP=HUBP,oldBase=base;BO=Object.create(null);
+		linkDirty=[];NEL=Object.create(null);LNK=Object.create(null);base=Object.create(null);pos=Object.create(null);off=Object.create(null);
 		var cx=W/2,cy=Math.max(R.y0+45,Math.min(H/2+18,R.y1-45)),rx=Math.min(W*.34,440),ry=Math.min(H*.3,230);
 		if(DENSE){cx=(R.x0+R.x1)/2;cy=(R.y0+R.y1)/2}
 		var ang=V.units.map(function(_,i){return N===1?Math.PI/2:(-90-180/N+i*360/N)*Math.PI/180});
 		if(N===4&&!MOB)ang=[-150,-30,150,30].map(function(a){return a*Math.PI/180});
 		if(MOB&&!DENSE){var top=R.y0,bot=H-R.y1;MTOP=top;MBOT=bot;cy=(top+H-bot)/2;var dy=Math.max(0,Math.min(190,(H-bot-top)/2-NS/2-34)),dx=Math.max(0,Math.min(150,W/2-NS/2-10));rx=dx*1.4142;ry=dy*1.4142/1.15}
 		HUBP={x:cx,y:cy};
-		var hub=document.createElement('div');hub.className='hub'+(V.lease&&V.lease.state!=='held'?' exp':'');hub.id='hubnode';
-		hub.setAttribute('role','button');hub.setAttribute('tabindex','0');hub.setAttribute('aria-label','Open hub overview');
+		var hub=document.getElementById('hubnode');
+		if(!hub){
+			hub=document.createElement('div');hub.id='hubnode';
+			hub.setAttribute('role','button');hub.setAttribute('tabindex','0');hub.setAttribute('aria-label','Open hub overview');
+			hub.innerHTML='<i class="halo"></i><i class="r"></i><i class="r"></i><i class="r"></i><div class="core">'+
+				'<svg width="36" height="36" viewBox="0 0 36 36" fill="none" stroke="#5b5bf0" stroke-width="1.6" stroke-linecap="round">'+
+				'<circle cx="18" cy="18" r="4"/><circle cx="18" cy="5" r="2"/><circle cx="29" cy="24" r="2"/><circle cx="7" cy="24" r="2"/>'+
+				'<path d="M18 14V7M21.5 20l6 3M14.5 20l-6 3"/></svg></div>';
+			stage.appendChild(hub);
+			hub.onclick=function(e){openHub(hub)};
+			hub.onkeydown=function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();openHub(hub)}};
+		}
+		hub.className='hub'+(V.lease&&V.lease.state!=='held'?' exp':'');
 		hub.style.left=cx+'px';hub.style.top=cy+'px';
-		hub.innerHTML='<i class="halo"></i><i class="r"></i><i class="r"></i><i class="r"></i><div class="core"><svg width="36" height="36" viewBox="0 0 36 36" fill="none" stroke="#5b5bf0" stroke-width="1.6" stroke-linecap="round"><circle cx="18" cy="18" r="4"/><circle cx="18" cy="5" r="2"/><circle cx="29" cy="24" r="2"/><circle cx="7" cy="24" r="2"/><path d="M18 14V7M21.5 20l6 3M14.5 20l-6 3"/></svg></div>';
-		stage.appendChild(hub);
-		hub.onclick=function(e){openHub(hub)};
-		hub.onkeydown=function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();openHub(hub)}};
 		/* Per-end arrowheads: marker-end (node side) reports hub-to-node, the flipped marker-start (hub side) reports node-to-hub. Shape and fill separate observed (filled triangle), stale (filled diamond) and never checked (hollow triangle). */
 		var LKMK=[['ok','M1 2L10 6L1 10z',9,'M11 2L2 6L11 10z',3],['wait','M6 1L11 6L6 11L1 6z',10,'M6 1L11 6L6 11L1 6z',2],['unk','M1 2L10 6L1 10z',9,'M11 2L2 6L11 10z',3]];
 		var L='<defs>';
@@ -1783,33 +1840,86 @@ header .lease{margin-top:5px;padding:6px 8px}
 			L+='<marker id="lk-ms-'+m[0]+'" markerUnits="userSpaceOnUse" markerWidth="12" markerHeight="12" refX="'+m[4]+'" refY="6" orient="auto"><path d="'+m[3]+'" class="mk-'+m[0]+'"/></marker>';
 		});
 		L+='</defs>';
+		/* Same node set re-solving to new spots only moves the links; the fade-in belongs to links appearing. */
+		var prevIds=RECON_IDS||Object.keys(oldNEL).sort().join('\\n');
+		var linkCls=prevIds===V.units.map(function(v){return v.id}).sort().join('\\n')?'':'fadein';
 		V.units.forEach(function(v,i){
+			var el=oldNEL[v.id],fresh=!el;
+			if(fresh&&POOL&&POOL[v.id]){
+				var pd=POOL[v.id];el=pd.el;stage.appendChild(el);nodeSig[v.id]=pd.sig;pvis[v.id]=pd.pv;
+				if(pd.b!==undefined&&oldBase[v.id]===undefined)oldBase[v.id]=pd.b;
+				fresh=false;
+			}
+			if(fresh){
+				el=document.createElement('div');el.style.setProperty('--ad',(.3+Math.min(i,5)*.08)+'s');el.setAttribute('data-id',v.id);
+				el.setAttribute('role','button');el.setAttribute('tabindex','-1');if(v.cluster)el.setAttribute('aria-expanded','false');
+				el.className=nodeCls(v,!knownIds[v.id]);el.innerHTML=nodeBody(v);stage.appendChild(el);
+				nodeSig[v.id]=nodeKey(v);
+			}else if(nodeSig[v.id]!==nodeKey(v)){
+				el.className=nodeCls(v);el.innerHTML=nodeBody(v);nodeSig[v.id]=nodeKey(v);
+			}
+			el.setAttribute('aria-label',v.cluster?groupLabel(v):'Open '+v.id);
 			var x=Math.min(W-NS/2-8,Math.max(NS/2+8,cx+Math.cos(ang[i])*rx)),y=cy+Math.sin(ang[i])*ry*1.15;
-			base[v.id]={x:x,y:y};pos[v.id]={x:x,y:y};off[v.id]={x:0,y:0,vx:0,vy:0,hx:0,hy:0};
-			var el=document.createElement('div');el.className=nodeCls(v,!knownIds[v.id]);el.style.setProperty('--ad',(.3+Math.min(i,5)*.08)+'s');el.style.left=x+'px';el.style.top=y+'px';el.setAttribute('data-id',v.id);
-			el.setAttribute('role','button');el.setAttribute('tabindex','-1');el.setAttribute('aria-label',v.cluster?groupLabel(v):'Open '+v.id);if(v.cluster)el.setAttribute('aria-expanded','false');
-			el.innerHTML=nodeBody(v);stage.appendChild(el);
 			/* The label block (name, OS, state chips) hangs below the orb; keep its bottom inside the map band or the chips are clipped away. */
 			var nm=el.querySelector('.nm'),dnh=nm?nm.offsetTop+nm.offsetHeight:NS;
-			if(y+dnh>R.y1||y-NS/2<R.y0){y=Math.min(R.y1-dnh,Math.max(R.y0+NS/2,y));base[v.id].y=y;pos[v.id].y=y;el.style.top=y+'px'}
-			NEL[v.id]=el;nodeSig[v.id]=nodeKey(v);pvis[v.id]=v.vis;if(knownIds[v.id])el.classList.remove('in');knownIds[v.id]=1;
-			L+='<g data-n="'+esc(v.id)+'" class="fadein"><linearGradient id="lkg'+i+'" gradientUnits="userSpaceOnUse"><stop offset="0" class="gs-unk"/><stop offset="1" class="gs-unk"/></linearGradient><path id="lk'+i+'" class="lk" stroke="url(#lkg'+i+')"/><path class="hit" id="lkh'+i+'"/></g>';
+			if(y+dnh>R.y1||y-NS/2<R.y0){y=Math.min(R.y1-dnh,Math.max(R.y0+NS/2,y))}
+			base[v.id]={x:x,y:y};pos[v.id]={x:x,y:y};off[v.id]=oldOff[v.id]||{x:0,y:0,vx:0,vy:0,hx:0,hy:0};
+			el.style.left=x+'px';el.style.top=y+'px';
+			NEL[v.id]=el;pvis[v.id]=v.vis;knownIds[v.id]=1;
+			L+='<g data-n="'+esc(v.id)+'"'+(linkCls?' class="'+linkCls+'"':'')+'>'+
+				'<linearGradient id="lkg'+i+'" gradientUnits="userSpaceOnUse">'+
+				'<stop offset="0" class="gs-unk"/><stop offset="1" class="gs-unk"/></linearGradient>'+
+				'<path id="lk'+i+'" class="lk" stroke="url(#lkg'+i+')"/><path class="hit" id="lkh'+i+'"/></g>';
 		});
-		links.innerHTML=L;
+		for(var oid in oldNEL)if(!NEL[oid]){
+			if(POOL)POOL[oid]={el:oldNEL[oid],sig:nodeSig[oid],pv:pvis[oid],b:oldBase[oid]};
+			oldNEL[oid].remove();delete nodeSig[oid];delete pvis[oid];
+		}
+		/* Short windows band-clamp the node below back into the queue label under the hub. Lift the hub (queue chips and the label ride with it)
+		   until the label clears every orb and arrowhead it crosses; all-or-nothing so a partial lift never parks the label on an orb. */
+		if(!DENSE&&!MOB&&V.queue.length){
+			paintQueue();
+			var ql0=stage.querySelector('.ql');
+			if(ql0){
+				var PM=8,qs0=V.queue.slice(0,9),lw=ql0.offsetWidth,lh=ql0.offsetHeight,raise=0;
+				var ARR=0;LKMK.forEach(function(m){ARR=Math.max(ARR,m[2])});
+				V.units.forEach(function(v){
+					if(Math.abs(base[v.id].x-cx)>=NS/2+lw/2)return;
+					raise=Math.max(raise,cy+QL(qs0)+lh-(base[v.id].y-NS/2-ARR-PM));
+				});
+				var chipUp=QR()+QCHIP/2*HS;
+				if(raise>0){
+					raise=Math.ceil(raise)+1;
+					var HB2={x:cx,y:cy-raise,hw:Math.max(HUBBOX/2,chipUp),up:chipUp,dn:QL(qs0)+lh+ARR},hit=raise>cy-(R.y0+45);
+					V.units.forEach(function(v){
+						var nm=NEL[v.id].querySelector('.nm');
+						var b={x:base[v.id].x,y:base[v.id].y,hw:Math.max(nm?nm.offsetWidth/2:0,NS/2),up:NS/2,dn:NS/2+2+(nm?nm.offsetHeight:0)};
+						var o=boxAmt(HB2,b,PM);if(o.ox>0&&o.oy>0)hit=true;
+					});
+					if(!hit){cy-=raise;HUBP={x:cx,y:cy};hub.style.top=cy+'px';qSig='';paintQueue()}
+				}
+			}
+		}
 		if(DENSE)packDense(R);else if(MOB)gridMobile(R);
 		/* Layout changes: the node box, label and number balloons jump straight to the new spot (spacing never slides); only the orb and ring glide over from the previous spot. */
 		V.units.forEach(function(v){
 			var b=base[v.id];if(!b)return;
 			pos[v.id]={x:b.x,y:b.y};
 			var el=NEL[v.id];el.style.left=b.x+'px';el.style.top=b.y+'px';
-			if(!RM&&oldPos[v.id]){var gdx=oldPos[v.id].x-b.x,gdy=oldPos[v.id].y-b.y;
+			/* The glide covers the layout delta only; the drift offset survives the pass. */
+			if(!RM&&oldBase[v.id]){var gdx=oldBase[v.id].x-b.x,gdy=oldBase[v.id].y-b.y;
 				if(gdx*gdx+gdy*gdy>4){BO[v.id]={x:gdx,y:gdy};el.classList.add('gl');el.style.setProperty('--gdx',r1(gdx)+'px');el.style.setProperty('--gdy',r1(gdy)+'px')}}
 		});
+		/* The link layer is one SVG; rewriting it replays every fade-in, so only new solved geometry justifies a rewrite. */
+		var lks=JSON.stringify(V.units.map(function(v){var b=base[v.id];return b?[v.id,r1(b.x),r1(b.y)]:[v.id]}))+
+			JSON.stringify([r1(HUBP.x),r1(HUBP.y)]);
+		if(lks!==LAYLK){links.innerHTML=L;LAYLK=lks}
 		V.units.forEach(function(v,i){
 			var lg=document.getElementById('lkg'+i);
 			LNK[v.id]={p:document.getElementById('lk'+i),h:document.getElementById('lkh'+i),g:lg,s0:lg.firstChild,s1:lg.lastChild,sig:''};
 		});
-		qSig='';paintQueue();patchStatus();bindMap();V.nodes.forEach(function(v){setDrift(v.raw)});paint();
+		if(HS!==HSPre||NS!==NSPre||r1(oldHUBP.x)!==r1(HUBP.x)||r1(oldHUBP.y)!==r1(HUBP.y))qSig='';
+		paintQueue();patchStatus();bindMap();V.nodes.forEach(function(v){setDrift(v.raw)});paint();
 		layoutSig=layoutKey();
 		if(mode==='node'&&sheetAnchor&&sheetAnchor!==$('find-node')&&NEL[sheetNode])sheetAnchor=NEL[sheetNode];
 		if(mode==='hub')sheetAnchor=hub;
@@ -1819,6 +1929,8 @@ header .lease{margin-top:5px;padding:6px 8px}
 		else VW.k=Math.min(KMAX,Math.max(KMIN,VW.k));
 		clampView();applyView();applyFilters();
 	}
+	/* Stable inputs to the cluster-mode decision; the live header height is deliberately not an input. */
+	function cmKey(){return JSON.stringify([V.nodes.map(function(v){return [v.id,v.os]}),innerWidth,innerHeight,fontsReady])}
 	function layoutKey(){var header=document.querySelector('header');return JSON.stringify([V.units.map(function(v){return [v.id,v.os]}),innerWidth,innerHeight,header&&header.offsetHeight||0])}
 	function paintQueue(){
 		var k=JSON.stringify(V.queue.map(function(t){return t.id}));
@@ -1872,7 +1984,13 @@ header .lease{margin-top:5px;padding:6px 8px}
 		   map build until fonts settle; a 900ms cap bounds the wait. */
 		if(!fontsReady){mapDeferred=true;return}
 		mkUnits();
+		/* Content before geometry: patch nodes in place so the relayout measures real labels and keeps drop/recovery flashes. */
+		patchUnits();
 		if(layoutKey()!==layoutSig){layout();return}
+		paintQueue();patchStatus();
+		if(V.nodes.length)V.nodes.forEach(function(v){if(v.raw.resources!==undefined)setDrift(v.raw)});
+	}
+	function patchUnits(){
 		V.units.forEach(function(v){
 			var el=NEL[v.id];if(!el)return;
 			var k=nodeKey(v);
@@ -1886,8 +2004,6 @@ header .lease{margin-top:5px;padding:6px 8px}
 				}
 			}
 		});
-		paintQueue();patchStatus();
-		if(V.nodes.length)V.nodes.forEach(function(v){if(v.raw.resources!==undefined)setDrift(v.raw)});
 	}
 	/* ---- tips ---- */
 	function sshRows(v){
@@ -1899,17 +2015,23 @@ header .lease{margin-top:5px;padding:6px 8px}
 	var ST={down:'Down',fail:'Needs eyes',busy:'Working',idle:'Standing by'};
 	function nodeTip(v){
 		var r=v.raw.resources,ts=tasksOfNode(v.id),st=v.status.level==='degraded'?'Degraded':v.status.level==='unknown'?'Health unknown':stLabel(v);
+		/* The chip only names the state now; the reason (and the at-risk count) shows here, on hover, focus, or the first tap. */
+		if((v.status.level==='down'||v.status.level==='degraded')&&v.status.reasons.length)st+=' · '+v.status.reasons.map(lvlReason).join(', ');
 		if(v.raw.enabled===false)st='Paused'+(v.status.level==='healthy'?'':' · '+st);
 		else if(v.raw.draining===true)st='Draining'+(v.status.level==='healthy'?'':' · '+st);
 		var col=v.vis==='down'||v.vis==='fail'?'#c4303f':v.status.level==='degraded'?'#8a5206':'#3d3dc8';
-		return '<h3>'+esc(v.id)+'<em style="color:'+col+'">'+esc(st)+'</em></h3><div class="kv"><span>OS</span><b>'+esc(OSN[v.os]||v.os)+' '+esc(v.arch)+'</b><span>Marked active</span><b>'+v.raw.currentLoad+'</b>'+(r&&r.ok&&r.cpuPct!=null?'<span>CPU</span><b>'+Math.round(r.cpuPct)+'%</b>':'')+'</div>'+
+		return '<h3>'+esc(v.id)+'<em style="color:'+col+'">'+esc(st)+'</em></h3><div class="kv"><span>OS</span><b>'+esc(OSN[v.os]||v.os)+' '+esc(v.arch)+'</b><span>Marked active</span><b>'+v.raw.currentLoad+'</b>'+(v.risk.count?'<span>Tasks at risk</span><b>'+v.risk.count+'</b>':'')+(r&&r.ok&&r.cpuPct!=null?'<span>CPU</span><b>'+Math.round(r.cpuPct)+'%</b>':'')+'</div>'+
 			(r&&r.ok&&r.cpuPct!=null?'<div class="ld"><i style="width:'+Math.min(100,r.cpuPct)+'%"></i></div>':'')+
 			'<div class="tt">'+(ts.length?ts.slice(0,3).map(function(t){var p=phaseLabel(t);return '<div><b>'+esc(t.title||t.key)+'</b><span>'+esc(p[1])+'</span></div>'}).join('')+(ts.length>3?'<div class="none">+'+(ts.length-3)+' more</div>':''):'<div class="none">Nothing assigned</div>')+'</div>'+sshRows(v);
 	}
 	function tipQ(t){var p=phaseLabel(t);return '<h3>Queued '+esc(t.key)+'<em style="color:#3d3dc8">Waiting</em></h3><div class="tt" style="border:0"><div><b>'+esc(t.title||t.key)+'</b><span>'+esc(t.placement&&t.placement.summary?t.placement.summary:p[1])+'</span></div></div>'}
 	function linkTip(v){
 		function row(t,x){return '<div class="lr"><b><i class="dt '+x.s+'"></i>'+t+'</b><span>'+x.label+(x.chk?' · checked '+ago2(x.chk):' · never checked from this side')+'</span></div>'}
-		return '<h3>'+esc(v.id)+'<span class="arr" style="font-size:14px">↔</span>hub<em style="color:#3d3dc8">SSH</em></h3><div class="tt" style="border:0">'+row('Hub <span class="arr">→</span> '+esc(v.id),v.out)+row(esc(v.id)+' <span class="arr">→</span> hub',v.inn)+'</div>';
+		// Nodes without SSH evidence (sshLinks only lists ssh transports) have no out/inn; show them as unchecked.
+		var o=v.out||dirView(null),n=v.inn||dirView(null);
+		return '<h3>'+esc(v.id)+'<span class="arr" style="font-size:14px">↔</span>hub<em style="color:#3d3dc8">SSH</em></h3>'+
+			'<div class="tt" style="border:0">'+row('Hub <span class="arr">→</span> '+esc(v.id),o)+
+			row(esc(v.id)+' <span class="arr">→</span> hub',n)+'</div>';
 	}
 	function showTip(el,html){
 		if(MOB){var rr=el.getBoundingClientRect();return mobTip(rr.top+rr.height/2,html)}
@@ -1936,6 +2058,9 @@ header .lease{margin-top:5px;padding:6px 8px}
 				el.onmouseleave=function(){hovN=null;tip.classList.remove('on');hotLane(v.id,false)};
 				el.onclick=function(){openGroup(v.id)};
 				el.onkeydown=function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();openGroup(v.id)}};
+				/* Keyboard parity with hover: the collapsed chips' words are in this tip. */
+				el.onfocus=function(){showTip(el.querySelector('.orb'),groupTip(curU(v.id)))};
+				el.onblur=function(){tip.classList.remove('on')};
 				var gg=LNK[v.id];
 				if(gg&&gg.h){
 					gg.h.onmouseenter=function(e){hotLane(v.id,true);showTipAt(e.clientX,e.clientY,groupLinkTip(curU(v.id)))};
@@ -1951,7 +2076,9 @@ header .lease{margin-top:5px;padding:6px 8px}
 				tapped=null;openNode(v.id,el);
 			};
 			el.onkeydown=function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();openNode(v.id,el)}else if(e.key.slice(0,5)==='Arrow'){e.preventDefault();nodeStep(el,e.key)}};
-			el.onfocus=function(){rove(v.id)};
+			/* Keyboard parity with hover and the first tap: the hidden OS · arch line and the reason are in this tip. */
+			el.onfocus=function(){rove(v.id);showTip(el.querySelector('.orb'),nodeTip(cur(v.id)))};
+			el.onblur=function(){tip.classList.remove('on')};
 			var g=LNK[v.id];
 			if(g&&g.h){
 				g.h.setAttribute('tabindex',v.id===LKROVE?'0':'-1');g.h.setAttribute('role','button');
@@ -1984,7 +2111,7 @@ header .lease{margin-top:5px;padding:6px 8px}
 		var R=mapRect(),x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
 		ids.forEach(function(id){var p=base[id],el=NEL[id];if(!p||!el)return;var nm=el.querySelector('.nm'),lh=nm?nm.offsetHeight:60;x0=Math.min(x0,p.x-NS*.6);x1=Math.max(x1,p.x+NS*.6);y0=Math.min(y0,p.y-NS*.45);y1=Math.max(y1,p.y+NS*.4+lh)});
 		if(x1<x0)return;
-		var k=Math.max(FIT.k,Math.min(KMAX,(W-24)/(x1-x0),(R.y1-R.y0-16)/(y1-y0)),Math.min(KMAX,HIT*1.02/NS));
+		var k=Math.max(FIT.k,Math.min(KMAX,(W-24)/(x1-x0),(R.y1-R.y0-16)/(y1-y0)),Math.min(KMAX,HIT_MIN*1.02/NS));
 		VW.k=k;VW.x=W/2-(x0+x1)/2*k;VW.y=(R.y0+R.y1)/2-(y0+y1)/2*k;
 		viewTouched=true;stage.classList.toggle('anim',!RM);clampView();applyView();
 	}
@@ -1995,7 +2122,6 @@ header .lease{margin-top:5px;padding:6px 8px}
 		layout();syncClip();focusIds(ids);
 		var f=NEL[ids[0]];if(f&&f.focus)f.focus({preventScroll:true});
 	}
-	function hasExp(){return CM&&Object.keys(EXP).length>0}
 	function collapseGroups(){
 		if(!Object.keys(EXP).length)return;
 		var k=Object.keys(EXP)[0];
@@ -2165,7 +2291,15 @@ header .lease{margin-top:5px;padding:6px 8px}
 	var mapHeader=document.querySelector('header');
 	if(mapHeader&&typeof ResizeObserver==='function')new ResizeObserver(relayoutIfNeeded).observe(mapHeader);
 	// Embedded font swaps can alter node letters even if the header happens to keep its height.
-	function fontsSettled(){if(fontsReady)return;fontsReady=true;if(V&&mapDeferred){mapDeferred=false;updateMap();syncClip()}}
+	function fontsSettled(){fontQuietOnce();if(fontsReady)return;fontsReady=true;if(V&&mapDeferred){mapDeferred=false;updateMap();syncClip()}}
+	/* fontsReady can beat the real glyph swap; re-decide the mode once startup font loads are quiet, then stop watching. */
+	function fontQuietOnce(){
+		if(!document.fonts||!document.fonts.ready||document.fonts.status==='loaded')return;
+		document.fonts.ready.then(function(){
+			if(document.fonts.status!=='loaded'){fontQuietOnce();return}
+			if(CMKEY){CMKEY='';if(V){layout();syncClip()}}
+		});
+	}
 	if(document.fonts&&document.fonts.ready){
 		document.fonts.ready.then(function(){var deferred=mapDeferred;fontsSettled();if(V&&!deferred){layout();syncClip()}});
 		setTimeout(fontsSettled,900);
