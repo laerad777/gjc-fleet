@@ -163,7 +163,10 @@ header .rt .live.retry{color:var(--warn)}
 #star-x{align-self:stretch}
 /* ---- node filters: calm light chips; dimming never moves the map ---- */
 #fbar{display:flex;flex-wrap:wrap;gap:var(--sp-2);margin-top:var(--sp-4);max-width:100%}
-.fchip{appearance:none;border:1px solid var(--line-hi);background:var(--panel-hi);color:var(--sub);font:inherit;font-size:0.8125rem;font-weight:500;letter-spacing:.01em;border-radius:999px;padding:7px 13px;display:inline-flex;align-items:center;gap:7px;cursor:pointer;box-shadow:none;transition:border-color .2s,color .2s,background .2s,opacity .2s}
+.fchip{appearance:none;border:1px solid var(--line-hi);background:var(--panel-hi);color:var(--sub);
+	font:inherit;font-size:0.8125rem;font-weight:500;letter-spacing:.01em;border-radius:999px;padding:7px 13px;
+	display:inline-flex;align-items:center;gap:7px;cursor:pointer;box-shadow:none;transition:border-color .2s,
+	color .2s,background .2s,opacity .2s}
 .fchip:hover{border-color:var(--ac2);color:var(--text)}
 .fchip:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
 .fchip[aria-pressed="true"]{background:rgba(91,91,240,.1);border-color:var(--ac);color:var(--violet)}
@@ -605,7 +608,8 @@ header .lease{margin-top:5px;padding:6px 8px}
 #world.gr .q{display:none}
 #world.gr #links path.fl,#world.gr #links path.draw{display:none}
 /* queue summary: one tappable pill under the hub instead of orbiting markers */
-.ql.pill{pointer-events:auto;cursor:pointer;white-space:nowrap;padding:8px 14px;border-radius:999px;background:var(--panel-hi);border:1px solid var(--line-hi);color:var(--sub);font-size:11px;letter-spacing:.1em;box-shadow:none}
+.ql.pill{pointer-events:auto;cursor:pointer;white-space:nowrap;padding:8px 14px;border-radius:999px;background:var(--panel-hi);
+	border:1px solid var(--line-hi);color:var(--sub);font-size:11px;letter-spacing:.1em;box-shadow:none}
 /* node filter bar: chips wrap to a second row so none is clipped; 44px touch height (labels shortened in <=480px) */
 #fbar{max-width:100%}
 .fchip{min-height:44px;flex:none}
@@ -1186,7 +1190,8 @@ header .lease{margin-top:5px;padding:6px 8px}
 	function ringSvg(s,live){
 		var c=s==='fail'?'#ef4a5b':s==='down'?'#b9bdd3':'#5b5bf0';
 		var o='<svg class="ring" viewBox="0 0 132 132"><circle cx="66" cy="66" r="62" fill="none" stroke="'+c+'" stroke-opacity="'+(s==='idle'?.18:s==='down'?.7:.25)+'" '+(s==='down'?'stroke-dasharray="7 6" stroke-width="1.6"':'')+'/>';
-		if(s==='busy'&&live)o+='<g class="sp"><circle cx="66" cy="4" r="4" fill="'+c+'"/><path d="M66 4A62 62 0 0 1 120 35" stroke="'+c+'" stroke-width="2" fill="none" stroke-linecap="round" opacity=".5"/></g>';
+		if(s==='busy'&&live)o+='<g class="sp"><circle cx="66" cy="4" r="4" fill="'+c+'"/>'
+			+'<path d="M66 4A62 62 0 0 1 120 35" stroke="'+c+'" stroke-width="2" fill="none" stroke-linecap="round" opacity=".5"/></g>';
 		if(s==='idle')o+='<g class="sp"><circle cx="66" cy="4" r="2.5" fill="'+c+'" opacity=".6"/></g>';
 		if(s==='fail')o+='<circle cx="66" cy="66" r="62" fill="none" stroke="#ef4a5b" stroke-width="1.5"'+
 			' stroke-dasharray="18 12"/>';
