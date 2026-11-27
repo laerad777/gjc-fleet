@@ -659,7 +659,8 @@ header .lease{margin-top:5px;padding:6px 8px}
 <div id="tip"></div><div id="veil"></div>
 <div id="sheet" data-testid="sheet" data-mode="node" role="dialog" aria-modal="true" aria-label="Fleet details"
  aria-hidden="true" inert>
-<div class="grab" id="grab" role="button" tabindex="0" aria-label="Resize detail panel" title="Drag or tap to resize the panel"><i></i></div>
+${'<div class="grab" id="grab" role="button" tabindex="0" aria-label="Resize detail panel" title="Drag or tap to resize the panel">' +
+'<i></i></div>'}
 	<button class="x" id="cl" aria-label="Close"><svg width="16" height="16" viewBox="0 0 16 16" stroke="#14162b" stroke-width="1.6" stroke-linecap="round"><path d="M3 3l10 10M13 3L3 13"/></svg></button>
 	<div class="dwrap" id="dw"></div>
 	<div class="dwrap" id="hubw">
