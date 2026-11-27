@@ -164,7 +164,7 @@ header .rt .live.retry{color:var(--warn)}
 #star-x svg{width:10px;height:10px;stroke:currentColor;stroke-width:1.6;stroke-linecap:round}
 #star-x{align-self:stretch}
 /* ---- node filters: calm light chips; dimming never moves the map ---- */
-#fbar{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;max-width:600px}
+#fbar{display:flex;flex-wrap:wrap;gap:var(--sp-2);margin-top:var(--sp-4);max-width:100%}
 .fchip{appearance:none;border:1px solid var(--line-hi);background:var(--panel-hi);color:var(--sub);font:inherit;font-size:0.8125rem;font-weight:500;letter-spacing:.01em;border-radius:999px;padding:7px 13px;display:inline-flex;align-items:center;gap:7px;cursor:pointer;box-shadow:0 6px 16px -12px rgba(50,50,150,.35);transition:border-color .2s,color .2s,background .2s,opacity .2s}
 .fchip:hover{border-color:var(--ac2);color:var(--text)}
 .fchip:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
@@ -173,9 +173,12 @@ header .rt .live.retry{color:var(--warn)}
 .fchip b{font-weight:600;font-variant-numeric:tabular-nums;color:var(--mut)}
 .fchip[aria-pressed="true"] b{color:inherit}
 .fchip.zero{opacity:.5}
+.fchip:disabled{cursor:default;border-color:var(--line);color:var(--dim)}
+.fchip:disabled:hover{border-color:var(--line);color:var(--dim)}
 .fchip.clear{border-style:dashed;color:var(--mut);box-shadow:none}
 .fchip[hidden]{display:none}
-#fstat{margin-top:8px;font-size:11px;letter-spacing:.06em;color:var(--mut)}
+#fstat{margin-top:var(--sp-2);font-size:11px;letter-spacing:.06em;color:var(--mut)}
+@media(min-width:701px){#fstat{position:absolute;margin:var(--sp-1) 0 0}}
 #fstat:empty{display:none}
 .node.dim{opacity:.16;filter:saturate(.3)}
 #links path,#links circle{transition:opacity .35s var(--ease)}
@@ -329,6 +332,7 @@ svg#links{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 	box-shadow:0 30px 70px -20px rgba(40,40,120,.35),0 0 0 1px rgba(255,255,255,.9) inset,0 0 0 1px rgba(91,91,240,.08);opacity:0;transform:translateY(6px) scale(.97);transition:opacity .22s,transform .22s;pointer-events:none}
 #tip.on{opacity:1;transform:none}
 #tip h3{font-family:var(--disp);font-size:17px;font-weight:600;display:flex;justify-content:space-between;align-items:baseline}
+#tip h3{flex-wrap:wrap;gap:var(--sp-1) var(--sp-3)}
 #tip h3 em{font-style:normal;font-family:var(--sans);font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;font-weight:600}
 .kv{display:grid;grid-template-columns:auto 1fr;gap:5px 14px;font-size:12px;margin:12px 0;color:var(--sub)}
 .kv b,.kv dd{color:var(--text);font-weight:500;text-align:right}
@@ -916,7 +920,10 @@ header .lease{margin-top:5px;padding:6px 8px}
 			if(!n.admission)return '<div class="meta res-none">No resource sample yet</div>';
 			return isLive?'<div class="res"><div class="skel" style="height:58px;border-radius:10px"></div></div>':'';
 		}
-		if(!r.ok)return '<div class="meta" style="margin-bottom:10px"><b>Resources</b> '+esc(r.error||'Measurement failed')+'</div>';
+		if(!r.ok){
+			var why=LVL[r.error]||r.error||'Measurement failed';
+			return '<div class="meta" style="margin-bottom:10px"><b>Resources</b> '+esc(why)+'</div>';
+		}
 		var cores=' <small>/ '+(r.physicalCores!=null?r.physicalCores+' cores':'cores unknown')+((r.threads||r.cores)!=null?' · '+(r.threads||r.cores)+' threads':'')+'</small>';
 		var cpu=(r.cpuPct==null?'Measuring':Math.round(r.cpuPct)+'%')+(r.load1!=null?' <small>· load '+r.load1.toFixed(2)+'</small>':'')+cores;
 		var h=meter('CPU',r.cpuPct,cpu,'cpu');
@@ -1082,6 +1089,7 @@ header .lease{margin-top:5px;padding:6px 8px}
 	}
 	var SSL={ok:'Observed',wait:'Stale',unk:'Not checked'};
 	var LVL={coordinator_unreachable:'Coordinator not responding',sdk_probe_failed:'SDK probe failed',resource_sample_failed:'Resource stream disconnected',no_fresh_control_observation:'No recent health check',unreachable:'Unreachable',sdk_not_ready:'SDK not ready',model_not_ready:'Model not ready',draining:'Draining',disabled:'Disabled',probe_failed:'Probe failed',resource_stream_failed:'Resource stream failed',node_unstable:'Node unstable',broker_session_list_failed:'Session list failed'};
+	LVL.resource_stream_disconnected='Resource stream disconnected';LVL.resource_stream_refused='Resource stream refused';
 	function lvlReason(r){return LVL[r]||reasonLabel(r)}
 	var WHY={only_eligible_node:'Only eligible node',higher_preference:'Matches a stated preference',fewer_held_tasks:'Fewest held tasks',node_id_tiebreak:'Tie broken by node id',no_eligible_node:'No eligible node',global_capacity:'Global limit reached'};
 	var OSN={darwin:'macOS',win32:'Windows',linux:'Linux'};
@@ -1317,7 +1325,7 @@ header .lease{margin-top:5px;padding:6px 8px}
 		if(!fBtns||!fBtns[FACETS[0].key]||fBtns[FACETS[0].key].parentNode!==bar)buildFilters(bar);
 		FACETS.forEach(function(f){
 			var n=V.nodes.filter(f.test).length,b=fBtns[f.key];
-			b.classList.toggle('zero',!n);
+			b.classList.toggle('zero',!n);b.disabled=!n&&!fOn[f.key];
 			b.setAttribute('aria-pressed',fOn[f.key]?'true':'false');
 			b.setAttribute('aria-label',f.label+', '+n+(n===1?' node':' nodes'));
 			b.lastChild.textContent=n;
@@ -1574,7 +1582,7 @@ header .lease{margin-top:5px;padding:6px 8px}
 			for(var j=i0;j<i1;j++){var t=3*Math.PI/2+dT*(j-i0);B[j].rx=r*Math.cos(t);B[j].ry=r*Math.sin(t)}
 			rOut=r;r+=minDist;i0=i1;
 		}
-		B.forEach(function(b){b.x=cx+b.rx*AX/rOut;b.y=cy+b.ry*AY/rOut;delete b.rx;delete b.ry;delete b.lv;delete b.ord});
+		B.forEach(function(b){b.x=cx+b.rx*Math.min(1,AX/rOut);b.y=cy+b.ry*Math.min(1,AY/rOut);delete b.rx;delete b.ry;delete b.lv;delete b.ord});
 	}
 	function setDense(ns,sc){
 		NS=ns;HS=Math.max(.5,Math.min(1,ns/(MOB?104:132)));
@@ -1593,7 +1601,10 @@ header .lease{margin-top:5px;padding:6px 8px}
 				setDense(ns,sc);
 				B=V.units.map(function(v){
 					var nm=NEL[v.id].querySelector('.nm')||{offsetWidth:0,offsetHeight:0};
-					return {id:v.id,vis:v.vis,hw:Math.max(nm.offsetWidth/2,ns*.364,ns*.4+15*BS),up:Math.max(ns*.364,ns*.36+15*BS),dn:ns*.364+2+nm.offsetHeight,x:0,y:0};
+					/* Extents are the full ring (half the node box), the label and a margin, so nothing meets the clip edge. */
+					var hw=Math.max(nm.offsetWidth/2,ns*.5,ns*.4+15*BS);
+					var up=Math.max(ns*.5,ns*.36+15*BS)+M,dn=Math.max(ns*.5,ns*.364+2+nm.offsetHeight)+M;
+					return {id:v.id,vis:v.vis,hw:hw,up:up,dn:dn,x:0,y:0};
 				});
 				var hr=QR()+16;
 				HB={x:cx,y:cy,hw:hr,up:hr,dn:Math.max(hr,QL(V?V.queue.slice(0,9):null)+14)};
@@ -1813,7 +1824,7 @@ header .lease{margin-top:5px;padding:6px 8px}
 		['--n','--hs','--nf','--nf2','--bs','--lw'].forEach(function(p){stage.style.setProperty(p,'')});
 		var R=syncClip();nodePicker();
 		/* Reconcile, never raze: reused nodes keep their element, drift offset and patched content (patchUnits already ran). */
-		var oldOff=off,oldNEL=NEL,oldHUBP=HUBP,oldBase=base;BO=Object.create(null);
+		var oldOff=off,oldNEL=NEL,oldHUBP=HUBP,oldBase=base,oldBO=BO;BO=Object.create(null);
 		linkDirty=[];NEL=Object.create(null);LNK=Object.create(null);base=Object.create(null);pos=Object.create(null);off=Object.create(null);
 		var cx=W/2,cy=Math.max(R.y0+45,Math.min(H/2+18,R.y1-45)),rx=Math.min(W*.34,440),ry=Math.min(H*.3,230);
 		if(DENSE){cx=(R.x0+R.x1)/2;cy=(R.y0+R.y1)/2}
@@ -1910,8 +1921,13 @@ header .lease{margin-top:5px;padding:6px 8px}
 			pos[v.id]={x:b.x,y:b.y};
 			var el=NEL[v.id];el.style.left=b.x+'px';el.style.top=b.y+'px';
 			/* The glide covers the layout delta only; the drift offset survives the pass. */
-			if(!RM&&oldBase[v.id]){var gdx=oldBase[v.id].x-b.x,gdy=oldBase[v.id].y-b.y;
-				if(gdx*gdx+gdy*gdy>4){BO[v.id]={x:gdx,y:gdy};el.classList.add('gl');el.style.setProperty('--gdx',r1(gdx)+'px');el.style.setProperty('--gdy',r1(gdy)+'px')}}
+			/* A glide still running from the previous pass is carried into the new one; dropping it left the orb offset for good. */
+			var pg=oldBO[v.id]||{x:0,y:0},gdx=0,gdy=0;
+			if(!RM&&oldBase[v.id]){gdx=oldBase[v.id].x-b.x+pg.x;gdy=oldBase[v.id].y-b.y+pg.y}
+			if(gdx*gdx+gdy*gdy>4){
+				BO[v.id]={x:gdx,y:gdy};el.classList.add('gl');
+				el.style.setProperty('--gdx',r1(gdx)+'px');el.style.setProperty('--gdy',r1(gdy)+'px');
+			}else if(oldBO[v.id]){el.classList.remove('gl');el.style.removeProperty('--gdx');el.style.removeProperty('--gdy')}
 		});
 		/* The link layer is one SVG; rewriting it replays every fade-in, so only new solved geometry justifies a rewrite. */
 		var lks=JSON.stringify(V.units.map(function(v){var b=base[v.id];return b?[v.id,r1(b.x),r1(b.y)]:[v.id]}))+
@@ -2041,9 +2057,22 @@ header .lease{margin-top:5px;padding:6px 8px}
 	}
 	function showTip(el,html){
 		if(MOB){var rr=el.getBoundingClientRect();return mobTip(rr.top+rr.height/2,html)}
-		tip.style.width='';tip.innerHTML=html;var r=el.getBoundingClientRect(),th=tip.offsetHeight,x=r.right+14;
-		if(x+300>W-16)x=r.left-314;
-		tip.style.left=x+'px';tip.style.top=Math.max(90,Math.min(H-th-16,r.top+r.height/2-th/2))+'px';tip.classList.add('on');
+		tip.style.width='';tip.innerHTML=html;
+		var r=el.getBoundingClientRect(),th=tip.offsetHeight,x=r.right+14,xl=r.left-314;
+		var top=Math.max(90,Math.min(H-th-16,r.top+r.height/2-th/2));
+		/* Pick the side that covers fewer other nodes; a tie opens on the right. */
+		function covered(left){
+			var n=0;
+			V.units.forEach(function(v){
+				var e=NEL[v.id],o=e&&e.querySelector('.orb');
+				if(!o||e.contains(el))return;
+				var q=o.getBoundingClientRect();
+				if(q.right>left&&q.left<left+300&&q.bottom>top&&q.top<top+th)n++;
+			});
+			return n;
+		}
+		if(x+300>W-16||(xl>=0&&covered(xl)<covered(x)))x=xl;
+		tip.style.left=x+'px';tip.style.top=top+'px';tip.classList.add('on');
 	}
 	function showTipAt(x,y,html){
 		if(MOB)return mobTip(y,html);
