@@ -1325,7 +1325,7 @@ header .lease{margin-top:5px;padding:6px 8px}
 		fClear.hidden=!fltSig();
 	}
 	function applyFilters(){
-		if(!V)return;
+		if(!V||!V.units)return;
 		var any=!!fltSig(),shown=0;
 		V.units.forEach(function(v,i){
 			var ok=v.cluster?v.members.some(function(m){return lit(m)}):lit(v);
@@ -1398,7 +1398,7 @@ header .lease{margin-top:5px;padding:6px 8px}
 		/* The spring integrates at rAF rate; DOM writes are capped at ~30fps and skipped while a
 		 * node's rounded drift offset is unchanged, so settled/idle nodes stop touching the DOM. */
 		var write=ts-twrite>=33;
-		if(V)V.units.forEach(function(v,i){
+		if(V&&V.units)V.units.forEach(function(v,i){
 			var o=off[v.id],el=NEL[v.id],dr=DRIFT[v.id];if(!o||!el)return;
 			var amp=(RM||!dr||!dr.live||v.vis==='down')?0:(.25+.75*dr.load)*(MOB?.6:1)*(DLIM[v.id]==null?1:DLIM[v.id]);
 			if(dr)dr.ph+=dt*(.5+1.1*(dr.load||0));
@@ -1694,7 +1694,7 @@ header .lease{margin-top:5px;padding:6px 8px}
 	function applyView(){
 		stage.style.transform='translate('+r1(VW.x)+'px,'+r1(VW.y)+'px) scale('+Math.round(VW.k*1000)/1000+')';
 		var font=parseFloat(stage.style.getPropertyValue?stage.style.getPropertyValue('--nf'):'')||15;
-		stage.classList.toggle('overview',DENSE&&font*VW.k<OVERVIEW_PX);
+		stage.classList.toggle('overview',DENSE&&!MOB&&font*VW.k<OVERVIEW_PX);
 		$('zg').hidden=!(CM&&Object.keys(EXP).length);
 		vp.setAttribute('data-zoom',String(Math.round(VW.k*1000)/1000));
 		$('zv').textContent=Math.round(VW.k/FIT.k*100)+'%';vp.setAttribute('data-fit',String(Math.round(FIT.k*1000)/1000));
@@ -1903,7 +1903,7 @@ header .lease{margin-top:5px;padding:6px 8px}
 				}
 			}
 		}
-		if(DENSE)packDense(R);else if(MOB)gridMobile(R);
+		if(MOB)gridMobile(R);else if(DENSE)packDense(R);
 		/* Layout changes: the node box, label and number balloons jump straight to the new spot (spacing never slides); only the orb and ring glide over from the previous spot. */
 		V.units.forEach(function(v){
 			var b=base[v.id];if(!b)return;
