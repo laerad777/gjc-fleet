@@ -30,7 +30,7 @@ body{font-family:var(--sans);color:var(--text);line-height:1.45;-webkit-font-smo
 .settled .rise{animation:none;opacity:1;transform:none}
 
 /* ---- map header ---- */
-header{position:absolute;top:0;left:0;right:0;padding:30px 44px;display:flex;justify-content:space-between;align-items:flex-start;z-index:5;pointer-events:none}
+header{position:absolute;top:0;left:0;right:0;padding:30px 44px;display:flex;justify-content:space-between;align-items:flex-start;gap:20px;z-index:5;pointer-events:none}
 header .hd,header .rt{pointer-events:auto;max-width:100%;min-width:0}
 h1{font-size:11px;letter-spacing:.32em;font-weight:600;color:var(--mut)}
 .hl{font-family:var(--disp);font-weight:400;font-size:36px;letter-spacing:-.025em;line-height:1.12;margin-top:8px}
@@ -44,11 +44,12 @@ h1 .ov.deg .od{background:var(--amber);animation:pls 2s infinite}
 h1 .ov.dn{background:rgba(239,74,91,.1);box-shadow:0 0 0 1px rgba(239,74,91,.35) inset;color:#b42a3a}
 h1 .ov.dn .od{background:var(--rose)}
 @keyframes pls{0%{box-shadow:0 0 0 0 rgba(240,165,42,.6)}70%{box-shadow:0 0 0 7px rgba(240,165,42,0)}100%{box-shadow:0 0 0 0 rgba(240,165,42,0)}}
-.sum{display:flex;gap:42px;text-align:right}
-.sum div span{display:block;font-size:11px;color:var(--mut);letter-spacing:.14em;text-transform:uppercase;font-weight:500}
-.sum div strong{font-family:var(--disp);font-size:46px;font-weight:400;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.sum{--metric-size:36px;display:grid;grid-template-columns:repeat(3,120px);column-gap:18px;text-align:right;align-items:start}
+.sum div{display:grid;grid-template-rows:1.25em auto;row-gap:6px;min-width:0}
+.sum div span{display:block;font-size:11px;line-height:1.25;color:var(--mut);letter-spacing:.10em;text-transform:uppercase;font-weight:500}
+.sum div strong{font-family:var(--disp);font-size:var(--metric-size);line-height:1;font-weight:400;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
 .sum .w strong{color:#c4303f}
-.rt{display:flex;flex-direction:column;align-items:flex-end}
+.rt{display:flex;flex-direction:column;align-items:flex-end;flex:0 0 auto}
 .live{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--sub);font-variant-numeric:tabular-nums;margin-top:10px;
 	padding:5px 11px;border-radius:999px;background:var(--panel);border:1px solid var(--line);transition:border-color .4s,color .4s}
 .dot{position:relative;width:7px;height:7px;border-radius:50%;background:var(--ok)}
@@ -405,7 +406,7 @@ footer{text-align:center;font-size:11px;color:var(--dim);padding:6px 0 4px}
 /* Short phones give the map more room without hiding failure or selecting a node for the operator. */
 @media(max-width:700px) and (max-height:719px){
 header{gap:6px!important;padding:16px 18px!important}
-header .sum strong{font-size:28px;line-height:1}
+header .sum{--metric-size:28px}
 header .hl{font-size:22px}
 header .lease{margin-top:5px;padding:6px 8px}
 .hint{display:none}
@@ -419,9 +420,10 @@ header{flex-direction:column;gap:14px;padding:22px 20px}
 .hl{font-size:26px}
 h1{font-size:10.5px}
 h1 .ov{margin-left:10px}
-.sum{gap:28px;text-align:left}
-.sum strong{font-size:36px}
-.rt{align-items:flex-start}
+.sum{--metric-size:29px;width:min(100%,360px);grid-template-columns:repeat(3,minmax(0,1fr));column-gap:12px;text-align:left}
+.sum div{row-gap:5px}
+.sum div span{font-size:10px;letter-spacing:.04em}
+.rt{width:100%;align-items:flex-start}
 header .rt .live{top:8px;right:20px}
 .fresh{margin-top:6px}
 .lease{margin-top:12px;width:100%;padding:10px 12px 12px;gap:10px}
@@ -451,6 +453,7 @@ header .rt .live{top:8px;right:20px}
 .co{padding:16px}
 .tk-sub{white-space:normal}
 }
+@media(max-width:350px){.sum div{grid-template-rows:2.5em auto}.sum{column-gap:8px}}
 </style>
 </head>
 <body>
@@ -897,7 +900,7 @@ header .rt .live{top:8px;right:20px}
 		ov.className='ov'+(state==='degraded'||state==='unknown'?' deg':state==='critical'?' dn':'');
 		ov.setAttribute('data-testid',state==='degraded'?'pill-degraded':state==='critical'?'pill-down':state==='unknown'?'pill-unknown':'pill-healthy');
 		$('ov-t').textContent=state==='degraded'?'Degraded':state==='critical'?'Down':state==='unknown'?'Unknown':'Healthy';
-		$('sum').innerHTML='<div><span>In flight</span><strong>'+run+'</strong></div><div><span>Queued</span><strong>'+V.queue.length+'</strong></div><div class="w"><span>Needs eyes</span><strong>'+V.needs+'</strong></div>';
+		$('sum').innerHTML='<div><span>Running</span><strong>'+run+'</strong></div><div><span>Queued</span><strong>'+V.queue.length+'</strong></div><div class="w"><span>Needs attention</span><strong>'+V.needs+'</strong></div>';
 		tickHead();
 	}
 	function fmt(v){return Math.floor(v/60)+':'+String(v%60).padStart(2,'0')}
