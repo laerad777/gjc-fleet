@@ -19,7 +19,7 @@ ${DASHBOARD_FONT_FACE_CSS}
 	--ease:cubic-bezier(.22,1,.36,1);--n:132px;--hit-min:44px;/* WCAG 2.5.5 / platform HIG minimum touch target */
 	/* one link per hub-node pair; its colors, widths and dash patterns live here only */
 	--lk-ok:#17b57e;--lk-wait:#f0a52a;--lk-unk:#b3b7cf;--lk-down:#c3c6da;
-	--lk-w:1.6;--lk-w-hot:2.8;--lk-dash-down:2 7;--lk-dash-go:4 5;--lk-pulse-dur:.9s;
+	--lk-w:1.6;--lk-w-hot:2.8;--lk-dash-down:2 7;--lk-dash-go:4 5;
 	/* 4px-base spacing scale; header/map-chrome gaps and margins pick from these tokens. */
 	--sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:20px;--sp-6:24px;
 	--sai-b:env(safe-area-inset-bottom,0px);
@@ -31,16 +31,13 @@ html,body{height:100%}
 html{background:var(--bg)}
 body{font-family:var(--sans);color:var(--text);line-height:1.45;-webkit-font-smoothing:antialiased;overflow:hidden;min-width:0;
 	background:var(--bg)}
-@keyframes rise{from{opacity:0;transform:translateY(14px)}to{opacity:1;transform:none}}
-.rise{opacity:0;transform:translateY(14px);animation:rise .7s var(--ease) forwards;animation-delay:calc(var(--i,0) * 60ms)}
-.settled .rise{animation:none;opacity:1;transform:none}
 
 /* ---- map header ---- */
 header{position:absolute;top:0;left:0;right:0;padding:30px 44px;display:flex;justify-content:space-between;align-items:flex-start;gap:20px;z-index:5;pointer-events:none}
 header .hd,header .rt{pointer-events:auto;max-width:100%;min-width:0}
 h1{font-size:11px;letter-spacing:.32em;font-weight:600;color:var(--mut)}
-.hl{font-family:var(--disp);font-weight:400;font-size:32px;letter-spacing:-.025em;line-height:1.12;margin-top:8px}
-.hl b{font-weight:600;font-style:italic;background:linear-gradient(100deg,var(--ac),#9a7bff);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hl{font-family:var(--disp);font-weight:400;font-size:var(--sp-6);letter-spacing:-.025em;line-height:1.2;margin-top:var(--sp-2)}
+.hl b{font-weight:600;font-style:italic;color:var(--ac);padding-right:var(--sp-1)}
 .hl .soft{font-weight:400;color:var(--mut)}
 h1 .ov{display:inline-flex;align-items:center;gap:7px;margin-left:16px;padding:4px 11px 4px 9px;border-radius:99px;letter-spacing:.2em;font-size:9.5px;vertical-align:1px;text-transform:uppercase;
 	background:rgba(23,181,126,.12);box-shadow:0 0 0 1px rgba(23,181,126,.35) inset;color:#0b6e4d}
@@ -51,7 +48,8 @@ h1 .ov.dn{background:rgba(239,74,91,.1);box-shadow:0 0 0 1px rgba(239,74,91,.35)
 h1 .ov.dn .od{background:var(--rose)}
 h1 .ov.unk{background:rgba(90,96,128,.09);box-shadow:0 0 0 1px rgba(90,96,128,.3) inset;color:#4a4f6b}
 h1 .ov.unk .od{background:transparent;box-shadow:0 0 0 1.5px #9aa0bd inset}
-.sum{--metric-size:28px;display:grid;grid-template-columns:repeat(3,max-content);column-gap:var(--sp-5);justify-content:end;text-align:right;align-items:start}
+.sum{--metric-size:var(--sp-5);display:grid;grid-template-columns:repeat(3,max-content);column-gap:var(--sp-5);justify-content:end;
+	text-align:right;align-items:start}
 .sum div{display:grid;grid-template-rows:1.25em auto;row-gap:var(--sp-1);min-width:0}
 .sum div span{display:block;font-size:11px;line-height:1.25;color:var(--mut);letter-spacing:.10em;text-transform:uppercase;font-weight:500;white-space:nowrap}
 .sum div strong{font-family:var(--sans);font-size:var(--metric-size);line-height:1;font-weight:600;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
@@ -62,7 +60,7 @@ h1 .ov.unk .od{background:transparent;box-shadow:0 0 0 1.5px #9aa0bd inset}
 .sum .st.dn i{background:#c4303f;border-radius:2px}
 .sum .st.dg i{background:var(--amber);clip-path:polygon(50% 0,100% 100%,0 100%)}
 .sum .st.unk i{border-radius:50%;box-shadow:0 0 0 1.5px #9aa0bd inset}
-.sum .st.pz i{background:linear-gradient(90deg,var(--dim) 33%,transparent 33%,transparent 66%,var(--dim) 66%)}
+.sum .st.pz i{border-left:3px solid var(--dim);border-right:3px solid var(--dim)}
 .sum .st.ok i{background:var(--ok);border-radius:50%}
 .rt{display:flex;flex-direction:column;align-items:flex-end;flex:0 0 auto}
 .live{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--sub);font-variant-numeric:tabular-nums;margin-top:10px;
@@ -89,17 +87,18 @@ header .rt .live.retry{color:var(--warn)}
 .fresh .sd:after{content:"";position:absolute;left:3.5px;top:1.5px;width:1.5px;height:4px;background:var(--amber);
 	border-radius:1px;transform-origin:50% 100%}
 .lease{position:relative;display:none;align-items:center;gap:12px;margin-top:12px;padding:8px 16px 11px 14px;width:max-content;max-width:100%;border-radius:16px;overflow:hidden;
-	background:linear-gradient(135deg,rgba(255,250,238,.92),rgba(255,244,222,.8));box-shadow:0 0 0 1px rgba(240,165,42,.38) inset}
+	background:var(--panel-hi);box-shadow:0 0 0 1px rgba(240,165,42,.38) inset}
 .lease.on{display:flex}
 .lease .ld2{flex:none;width:9px;height:9px;border-radius:50%;background:var(--amber)}
 .lease .lt b{display:block;font-family:var(--disp);font-weight:600;font-size:15px;color:#5c3a05}
 .lease .lt span{display:block;font-size:12px;color:#6f5121;margin-top:2px}
-.lease em{font-style:normal;font-family:var(--sans);font-weight:600;font-size:22px;color:#8a5206;font-variant-numeric:tabular-nums;margin-left:6px;padding-left:14px;border-left:1px solid rgba(240,165,42,.35)}
+.lease em{font-style:normal;font-family:var(--sans);font-weight:600;font-size:var(--sp-4);color:#8a5206;font-variant-numeric:tabular-nums;
+	margin-left:6px;padding-left:14px;border-left:1px solid rgba(240,165,42,.35)}
 .lease .lbar{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(240,165,42,.15);display:none}
 .lease.wp .lbar{display:block}
-.lease .lbar i{display:block;height:100%;background:linear-gradient(90deg,#f6c26a,var(--amber));transition:width 1s linear}
-.lease.xd{background:linear-gradient(135deg,rgba(255,241,243,.94),rgba(255,228,232,.82));box-shadow:0 0 0 1px rgba(239,74,91,.4) inset}
-.lease.xd .ld2{background:var(--rose);animation:none}
+.lease .lbar i{display:block;height:100%;background:var(--amber);transition:width 1s linear}
+.lease.xd{background:var(--panel-hi);box-shadow:0 0 0 1px rgba(239,74,91,.4) inset}
+.lease.xd .ld2{background:var(--rose)}
 .lease.xd .lt b{color:#7a1f2b}
 .lease.xd .lt span{color:#96414c}
 .lease.xd em{color:#b42a3a;border-left-color:rgba(239,74,91,.35)}
@@ -111,7 +110,6 @@ header .rt .live.retry{color:var(--warn)}
 #stage.grab{cursor:grabbing}
 #world{position:absolute;left:0;top:0;width:100%;height:100%;transform-origin:0 0;will-change:transform}
 #world.anim{transition:transform .28s var(--ease)}
-#world.sc .node.in,#world.sc .node.in .ring{animation:none}
 #world.sc.overview .nm{visibility:hidden}
 #world.sc.overview .node.fail .nm,#world.sc.overview .node.down .nm{visibility:visible}
 #world.sc.overview .bl.zero{display:none}
@@ -140,8 +138,7 @@ header .rt .live.retry{color:var(--warn)}
 #find-btn:focus-visible{outline:var(--ctl-focus);outline-offset:2px}
 #find-btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
 #find-pop{position:absolute;right:0;bottom:calc(100% + 8px);width:min(280px,calc(100vw - 32px));
-	padding:8px;border-radius:16px;background:rgba(255,255,255,.94);backdrop-filter:blur(18px) saturate(140%);
-	-webkit-backdrop-filter:blur(18px) saturate(140%);box-shadow:0 0 0 1px var(--line);z-index:24}
+	padding:8px;border-radius:16px;background:var(--panel-hi);box-shadow:0 0 0 1px var(--line);z-index:24}
 #find-pop[hidden]{display:none}
 #find-q{width:100%;height:var(--ctl-h);padding:0 12px;border:1px solid var(--line);border-radius:10px;background:#fff;font:inherit;font-size:13px;color:var(--text)}
 #find-q:focus-visible{outline:var(--ctl-focus);outline-offset:1px}
@@ -198,34 +195,26 @@ header .rt .live.retry{color:var(--warn)}
 #world.sc.dn .nchip{font-size:0;padding:0;gap:0;background:none;box-shadow:none;letter-spacing:0}
 #world.sc.dn .nchip.dn u{width:9px;height:9px}
 #world.sc.dn .nchip:not(.dn):before{content:"";width:9px;height:9px;border-radius:50%;background:var(--amber)}
-/* Large fleets: perpetual motion does not scale to dozens of nodes. State stays encoded in color, dashes and balloons; entry animations, the hub and queue markers are untouched. */
-#world.calm .busy .ring .sp{animation:none}
 svg#links{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
-.hub{position:absolute;width:150px;height:150px;transform:translate(-50%,-50%) scale(var(--hs,1));display:grid;place-items:center;cursor:pointer;animation:hubin 1.2s cubic-bezier(.16,1,.3,1) both}
-@keyframes hubin{from{opacity:0;transform:translate(-50%,-50%) scale(.5)}}
+.hub{position:absolute;width:150px;height:150px;transform:translate(-50%,-50%) scale(var(--hs,1));display:grid;place-items:center;
+	cursor:pointer}
 .hub .core{width:88px;height:88px;border-radius:50%;display:grid;place-items:center;position:relative;z-index:2;
 	background:#fff;
 	box-shadow:0 0 0 1px var(--line)}
 .hub small{position:absolute;top:calc(100% + 2px);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:var(--mut);white-space:nowrap;pointer-events:none}
 .q{position:absolute;width:30px;height:30px;margin:-15px;transform:scale(var(--hs,1));border-radius:50%;background:#fff;color:var(--ac);font-size:12px;font-weight:700;display:grid;place-items:center;
-	box-shadow:0 0 0 1.5px var(--ac2) inset;z-index:3;cursor:pointer;animation:pop2 .9s cubic-bezier(.16,1,.3,1) both .9s}
-@keyframes pop2{from{opacity:0;transform:scale(.3)}}
+	box-shadow:0 0 0 1.5px var(--ac2) inset;z-index:3;cursor:pointer}
 .ql{position:absolute;transform:translateX(-50%);font-size:10.5px;color:var(--mut);letter-spacing:.14em;text-transform:uppercase;white-space:nowrap;pointer-events:none}
 .node{position:absolute;width:var(--n);height:var(--n);will-change:transform;cursor:pointer;z-index:4;touch-action:manipulation;transition:opacity .35s var(--ease),filter .35s var(--ease)}
 /* Centering, hover lift and the entry pop live on this inner box so the outer element's
  * transform is owned by the drift loop: per-frame writes are compositor-only translate3d
- * and never restart the hover transition or the pop animation. */
-.nbod{position:absolute;inset:0;transform:translate(-50%,-50%);transition:transform .7s cubic-bezier(.16,1,.3,1)}
+ * and never restart the hover transition. */
+.nbod{position:absolute;inset:0;transform:translate(-50%,-50%);}
 .node:focus-visible{outline:2px solid var(--ac);outline-offset:4px;border-radius:50%}
-.node:hover .nbod{transform:translate(-50%,-50%) scale(1.07)}
-.node.in{animation:fi 1.1s cubic-bezier(.16,1,.3,1) var(--ad,0s) both}
-.node.in .nbod{animation:pop 1.1s cubic-bezier(.16,1,.3,1) var(--ad,0s) both}
-.node.in .ring{transform-origin:50% 50%;animation:pop2 1.1s cubic-bezier(.16,1,.3,1) var(--ad,0s) both}
-@keyframes pop{from{opacity:0;transform:translate(-50%,-50%) scale(.4)}to{opacity:1;transform:translate(-50%,-50%) scale(1)}}
 .orb{position:absolute;inset:13.6%;border-radius:50%;display:grid;place-items:center;
 	background:#fff;
 	box-shadow:0 0 0 1px var(--line);
-	transition:box-shadow .5s,transform .6s cubic-bezier(.16,1,.3,1)}
+	transition:box-shadow .2s}
 .node:hover .orb{box-shadow:0 0 0 1px var(--ac2)}
 .orb svg.ic{width:45.8%;height:auto;stroke:var(--ink);fill:none;stroke-width:1.6;stroke-linecap:round;stroke-linejoin:round}
 .ic .f{fill:var(--ac);fill-opacity:.17;stroke:none}
@@ -251,23 +240,15 @@ svg#links{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .nchip.dg,.nchip.rk{color:#8a5206;background:rgba(240,165,42,.13);box-shadow:0 0 0 1px rgba(240,165,42,.4) inset}
 .nchip.pz{color:var(--sub);background:rgba(91,91,240,.07);box-shadow:0 0 0 1px var(--line-hi) inset}
 .nchip.pz u{width:6px;height:6px;border-radius:50%;box-shadow:0 0 0 1.2px currentColor inset;text-decoration:none}
-.busy .ring .sp{transform-origin:66px 66px;animation:spin 3.2s linear infinite}
-@keyframes spin{to{transform:rotate(360deg)}}
 .fail .orb{box-shadow:0 0 0 1.5px rgba(239,74,91,.5) inset}
 .fail .orb svg.ic{stroke:var(--bad)}
 .fail .ic .f,.fail .ic .acf{fill:var(--bad)}.fail .ic .ac{stroke:var(--bad)}
-.down .orb{animation:none!important;opacity:.8;filter:grayscale(1) saturate(0);background:#f1f2f6;box-shadow:0 0 0 1px var(--line)}
+.down .orb{opacity:.8;filter:grayscale(1) saturate(0);background:#f1f2f6;box-shadow:0 0 0 1px var(--line)}
 .down .orb svg.ic{stroke:#a7abc2}
 .down .ic .f{fill:#a7abc2}.down .ic .ac{stroke:#a7abc2}.down .ic .acf{fill:#a7abc2}.down .ic .ey{fill:#a7abc2}
 .down .ring{filter:grayscale(1);opacity:1}
 .down .nm b{color:#6f7390}
 /* state-change flashes and interior glide (motion polish) */
-.node.reco .orb{animation:reco 1.5s var(--ease)!important}
-@keyframes reco{0%{filter:grayscale(1) saturate(0);opacity:.8}100%{filter:none;opacity:1}}
-.node.reco .ring{transform-origin:50% 50%;animation:recoring 1.5s ease-out}
-@keyframes recoring{0%{opacity:.2;transform:scale(.94)}40%{opacity:1}100%{opacity:1;transform:scale(1)}}
-.node.dropin .orb{animation:dropin .9s var(--ease)!important}
-@keyframes dropin{0%{filter:none;opacity:1;transform:scale(1)}100%{filter:grayscale(1) saturate(0);opacity:.8;transform:scale(.97)}}
 /* Relayout glide: only the orb and ring travel from the previous spot; the node box, label and balloons never slide. Uses the individual translate property so it composes with transform animations (breathe/shake/reco). */
 .node.gl .orb,.node.gl .ring{translate:var(--gdx,0px) var(--gdy,0px)}
 .stalled .orb{opacity:.82;filter:saturate(.45)}
@@ -284,14 +265,11 @@ svg#links{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 #zc #zg{width:var(--hit-min,44px);height:var(--hit-min,44px);border-radius:50%;border:1px solid var(--line-hi);background:var(--panel-hi);color:var(--ink);cursor:pointer;display:grid;place-items:center;font:inherit;font-size:11px;font-weight:600;letter-spacing:.04em}
 #zc #zg[hidden]{display:none}
 #zc #zg:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
-.fadein{animation:fi 1.6s .9s both}@keyframes fi{from{opacity:0}}
 /* One link per hub-node pair. Encoding after cytoscape.js edge styles (MIT, logic only, no dependency): a single edge whose line-style carries path state and whose per-end arrows carry direction state by shape and fill. No repeating flow animation; a confirmed state change pulses once. */
 .lk{fill:none;stroke-linecap:round;stroke-width:var(--lk-w);transition:stroke-width .3s,stroke-opacity .3s}
 .lk.down{stroke:var(--lk-down);stroke-opacity:.9;stroke-dasharray:var(--lk-dash-down)}
 .lk.go{stroke-dasharray:var(--lk-dash-go)}
 .lk.hot{stroke-width:var(--lk-w-hot)}
-.lk.pulse{animation:lkpulse var(--lk-pulse-dur) ease-out 1}
-@keyframes lkpulse{from{stroke-width:var(--lk-w-hot)}to{stroke-width:var(--lk-w)}}
 .gs-ok{stop-color:var(--lk-ok)}.gs-wait{stop-color:var(--lk-wait)}.gs-unk{stop-color:var(--lk-unk)}
 .mk-ok{fill:var(--lk-ok)}.mk-wait{fill:var(--lk-wait)}.mk-unk{fill:none;stroke:var(--lk-unk);stroke-width:1.4}
 .hit{fill:none;stroke:transparent;stroke-width:12;pointer-events:stroke;cursor:pointer}
@@ -313,8 +291,8 @@ svg#links{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .dt.unk{background:transparent;box-shadow:0 0 0 1.5px #b3b7cf inset}
 .lg .dt{margin:0}
 /* ---- tooltip ---- */
-#tip{position:absolute;z-index:20;width:300px;padding:18px 20px;border-radius:18px;background:rgba(255,255,255,.86);backdrop-filter:blur(22px) saturate(1.6);-webkit-backdrop-filter:blur(22px) saturate(1.6);
-	box-shadow:0 0 0 1px var(--line);opacity:0;transform:translateY(6px) scale(.97);transition:opacity .22s,transform .22s;pointer-events:none}
+#tip{position:absolute;z-index:20;width:300px;padding:18px 20px;border-radius:18px;background:var(--panel-hi);
+	box-shadow:0 0 0 1px var(--line);opacity:0;transition:opacity .15s;pointer-events:none}
 #tip.on{opacity:1;transform:none}
 #tip h3{font-family:var(--disp);font-size:17px;font-weight:600;display:flex;justify-content:space-between;align-items:baseline}
 #tip h3{flex-wrap:wrap;gap:var(--sp-1) var(--sp-3)}
@@ -323,7 +301,8 @@ svg#links{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .kv b,.kv dd{color:var(--text);font-weight:500;text-align:right}
 .kv dt{color:var(--dim)}
 .kv dd{text-align:left;min-width:0;overflow-wrap:anywhere}
-.ld{height:3px;background:var(--line);border-radius:2px;margin:10px 0 2px;overflow:hidden}.ld i{display:block;height:100%;background:linear-gradient(90deg,var(--ac2),var(--ac))}
+.ld{height:3px;background:var(--line);border-radius:2px;margin:10px 0 2px;overflow:hidden}.ld i{display:block;height:100%;
+	background:var(--ac)}
 .tt{border-top:1px solid var(--line);padding-top:10px;margin-top:4px}
 .tt div{font-size:12px;padding:5px 0}.tt div b{font-weight:600;display:block;font-size:12.5px}.tt div span{color:var(--sub)}
 .tt .none{color:var(--dim)}
@@ -333,10 +312,10 @@ svg#links{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .tt .sr span{white-space:nowrap;font-variant-numeric:tabular-nums}
 .arr{margin:0 5px;color:var(--dim);font-weight:400}
 /* ---- sheet (node detail, hub overview) ---- */
-#veil{position:absolute;inset:0;z-index:30;pointer-events:none;background:rgba(236,237,252,0);backdrop-filter:blur(0);-webkit-backdrop-filter:blur(0);transition:background .8s,backdrop-filter .8s}
-#veil.on{pointer-events:auto;background:rgba(236,237,252,.55);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px)}
-#sheet{position:absolute;z-index:31;inset:0;pointer-events:none;clip-path:circle(0 at var(--cx,50%) var(--cy,50%));background:linear-gradient(160deg,#fff 0%,#f3f4ff 100%);transition:clip-path 1s cubic-bezier(.76,0,.16,1)}
-#sheet.on{pointer-events:auto;clip-path:circle(150% at var(--cx,50%) var(--cy,50%))}
+#veil{position:absolute;inset:0;z-index:30;pointer-events:none;background:rgba(236,237,252,0);transition:background .2s}
+#veil.on{pointer-events:auto;background:rgba(236,237,252,.55)}
+#sheet{position:absolute;z-index:31;inset:0;pointer-events:none;opacity:0;background:var(--bg);transition:opacity .2s}
+#sheet.on{pointer-events:auto;opacity:1}
 .x{position:absolute;top:30px;right:40px;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:#fff;cursor:pointer;display:grid;place-items:center;z-index:5;transition:transform .3s}
 .x:hover{transform:rotate(90deg)}
 .dwrap{position:relative;height:100%;max-width:1160px;margin:0 auto;padding:64px 56px;display:grid;grid-template-columns:340px 1fr;gap:64px;opacity:0;transform:translateY(24px);transition:opacity .9s .45s cubic-bezier(.16,1,.3,1),transform .9s .45s cubic-bezier(.16,1,.3,1)}
@@ -344,8 +323,9 @@ svg#links{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 #hubw{display:block;overflow-y:auto}
 #sheet[data-mode="hub"] #dw,#sheet[data-mode="node"] #hubw{display:none}
 .big{position:relative;width:230px;height:230px;margin:10px 0 30px}
-.big .node{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(1.75);cursor:default;animation:none}
-.dl h2{font-family:var(--disp);font-weight:600;font-size:46px;letter-spacing:-.025em;line-height:1.1;padding-bottom:4px;overflow-wrap:anywhere;background:linear-gradient(100deg,#14162b 40%,#5b5bf0);-webkit-background-clip:text;background-clip:text;color:transparent}
+.big .node{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%) scale(1.75);cursor:default}
+.dl h2{font-family:var(--disp);font-weight:600;font-size:var(--sp-6);letter-spacing:-.025em;line-height:1.2;padding-bottom:var(--sp-1);
+	overflow-wrap:anywhere;color:var(--text)}
 .dl p.s{font-size:14px;color:var(--sub);margin-top:6px;letter-spacing:.04em}
 .dl .kv{font-size:13px;margin-top:26px;gap:12px 16px}
 .dr{min-height:0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--line-hi) transparent;padding-right:4px}
@@ -354,7 +334,7 @@ svg#links{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .dr::-webkit-scrollbar-track{background:transparent}
 .dr h4{font-size:11px;letter-spacing:.28em;text-transform:uppercase;color:var(--sub);font-weight:600;margin-bottom:18px}
 .wk{position:relative;padding:22px 0 22px 40px;border-top:1px solid var(--line)}
-.wk:hover{background:linear-gradient(90deg,rgba(91,91,240,.06),rgba(91,91,240,0))}
+.wk:hover{background:var(--panel)}
 .wk .no{position:absolute;left:0;top:24px;font-size:12px;color:#3d3dc8;font-weight:700;font-variant-numeric:tabular-nums}
 .wk b{font-family:var(--disp);font-weight:400;font-size:21px;letter-spacing:-.01em}
 .wk .ph{float:right;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:#3d3dc8;font-weight:600;max-width:55%;text-align:right}
@@ -362,13 +342,13 @@ svg#links{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .wk .why{margin-top:10px;font-size:13.5px;color:var(--sub);line-height:1.65}
 .wk .why u{text-decoration:none;color:var(--ink);font-weight:500}
 .pg{height:3px;background:var(--line);border-radius:2px;margin-top:14px;overflow:hidden}
-.pg i{display:block;height:100%;background:linear-gradient(90deg,var(--ac2),var(--ac))}
+.pg i{display:block;height:100%;background:var(--ac)}
 .sc{display:grid;grid-template-columns:120px 1fr 1fr;gap:18px;padding:16px 0;border-top:1px solid var(--line)}
 .sc>b{font-family:var(--disp);font-weight:400;font-size:19px}
 .sc .lc small{display:block;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);margin-bottom:4px}
 .sc .lc span{display:flex;align-items:center;font-size:13.5px;font-weight:500}
 .sc .lc em{display:block;font-style:normal;font-size:12px;color:var(--sub);margin-top:3px;line-height:1.5}
-.co{margin:0 0 30px;padding:18px 20px;border-radius:18px;background:linear-gradient(135deg,rgba(255,255,255,.9),rgba(255,247,236,.9));
+.co{margin:0 0 30px;padding:18px 20px;border-radius:18px;background:var(--panel-hi);
 	box-shadow:0 0 0 1px rgba(239,74,91,.18) inset}
 .co .cot{display:flex;align-items:center;gap:12px;font-size:14px;font-weight:500}
 .co p{font-size:13.5px;color:var(--sub);margin:10px 0 0;line-height:1.6}
@@ -377,13 +357,13 @@ svg#links{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .rsec{margin:0 0 30px}
 .x2{display:none}
 /* ---- shared components (hub overview + node detail) ---- */
-.glass{background:var(--panel);border:1px solid var(--line);border-radius:18px;backdrop-filter:blur(18px) saturate(140%);-webkit-backdrop-filter:blur(18px) saturate(140%);
-	box-shadow:none;transition:transform .35s var(--ease),border-color .35s,background .35s}
+.glass{background:var(--panel);border:1px solid var(--line);border-radius:18px;
+	box-shadow:none;transition:border-color .2s,background .2s}
 @media(hover:hover){.glass:hover{border-color:var(--line-hi);background:var(--panel-hi)}}
 .runtime{position:relative;padding:16px 18px;margin-bottom:22px;overflow:hidden}
 .eyebrow{font-size:10.5px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:var(--sub)}
 .rt-row{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin:4px 0 12px}
-.rt-ver{font-family:var(--disp);font-size:26px;font-weight:600;letter-spacing:-.02em;color:var(--text)}
+.rt-ver{font-family:var(--disp);font-size:var(--sp-5);font-weight:600;letter-spacing:-.02em;color:var(--text)}
 .rt-age{font-size:11.5px;color:var(--dim);font-variant-numeric:tabular-nums;white-space:nowrap}
 .chips{display:flex;flex-wrap:wrap;gap:8px}
 .chip{display:inline-flex;align-items:center;gap:7px;font-size:12px;font-weight:550;padding:6px 11px;border-radius:999px;
@@ -403,13 +383,11 @@ h2{font-size:14px;font-weight:650;letter-spacing:-.01em}
 .note{font-size:11.5px;color:var(--dim);margin-top:10px;line-height:1.5}
 .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .wrap{max-width:960px;margin:0 auto}
-.spin{width:10px;height:10px;border-radius:50%;border:1.5px solid currentColor;border-top-color:transparent;animation:rot .8s linear infinite}
-@keyframes rot{to{transform:rotate(360deg)}}
+.spin{width:10px;height:10px;border-radius:50%;border:1.5px solid currentColor;border-top-color:transparent}
 .empty{padding:26px 16px;text-align:center;font-size:12.5px;color:var(--dim);border:1px dashed var(--line-hi);border-radius:18px}
 #dw .empty{padding:34px 20px;font-size:13px}
 .res-none{margin-bottom:11px}
-.skel{height:76px;border-radius:18px;background:linear-gradient(100deg,var(--panel) 30%,var(--panel-hi) 50%,var(--panel) 70%);background-size:300% 100%;animation:shimmer 1.6s linear infinite}
-@keyframes shimmer{to{background-position:-300% 0}}
+.skel{height:76px;border-radius:18px;background:var(--panel)}
 .stale main{opacity:1;filter:saturate(.4);transition:opacity .5s,filter .5s}
 #stage{transition:filter .5s}
 .stale #stage{filter:saturate(.4)}
@@ -418,13 +396,12 @@ footer{text-align:center;font-size:11px;color:var(--dim);padding:6px 0 4px}
 .flow{display:grid;grid-template-columns:repeat(7,1fr);position:relative}
 .flow::before,.flow::after{content:"";position:absolute;top:18px;left:7.14%;right:7.14%;height:2px;border-radius:2px}
 .flow::before{background:var(--line-hi)}
-.flow::after{background:repeating-linear-gradient(90deg,var(--ac) 0 7px,transparent 7px 16px);background-size:16px 100%;opacity:0;transition:opacity .5s;animation:dash .7s linear infinite}
-.flow.busy::after{opacity:.9}
-@keyframes dash{to{background-position:16px 0}}
+.flow::after{display:none}
+.flow.busy::before{background:var(--ac2)}
 .st{display:flex;flex-direction:column;align-items:center;gap:5px;position:relative;z-index:1;min-width:0}
 .st .n{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;font-size:15px;font-weight:700;font-variant-numeric:tabular-nums;background:#fff;border:1.5px solid var(--line-hi);color:var(--dim);transition:all .5s var(--ease)}
 .st.seen .n{color:var(--text);border-color:rgba(91,91,240,.45)}
-.st.on .n{color:#fff;background:linear-gradient(140deg,var(--ac2),var(--ac));border-color:transparent}
+.st.on .n{color:#fff;background:var(--ac);border-color:transparent}
 .st .l{font-size:11.5px;font-weight:600;color:var(--sub)}
 .st.on .l,.st.seen .l{color:var(--text)}
 .st .r{font-size:10px;color:var(--dim);font-variant-numeric:tabular-nums}
@@ -438,12 +415,10 @@ footer{text-align:center;font-size:11px;color:var(--dim);padding:6px 0 4px}
 .tk-sub b{color:var(--text);font-weight:600}
 .steps{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
 .steps i{height:5px;border-radius:3px;background:rgba(20,22,43,.09);transform-origin:left}
-.steps i.done{background:linear-gradient(90deg,var(--ac2),var(--ac));animation:fill .6s var(--ease) backwards;animation-delay:calc(var(--s) * 70ms)}
+.steps i.done{background:var(--ac)}
 .steps i.now{background:var(--ac);}
 .steps i.wait{background:var(--amber);opacity:.85}
 .steps i.fail{background:var(--rose)}
-@keyframes fill{from{transform:scaleX(0)}}
-.settled .steps i.done{animation:none}
 .steplabels{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;margin-top:5px;font-size:9.5px;color:var(--dim);text-align:center;font-variant-numeric:tabular-nums}
 .steplabels span.hit{color:var(--sub)}
 .more{display:grid;grid-template-rows:0fr;transition:grid-template-rows .45s var(--ease)}
@@ -465,7 +440,8 @@ footer{text-align:center;font-size:11px;color:var(--dim);padding:6px 0 4px}
 .ndc{padding:15px 16px}
 .nd-top{display:flex;align-items:center;gap:12px;margin-bottom:12px}
 .nd-top .chip{margin-left:auto;flex:none;padding:4px 9px;font-size:11px}
-.os{width:36px;height:36px;flex:none;border-radius:11px;display:grid;place-items:center;font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--text);background:linear-gradient(140deg,rgba(143,143,255,.22),rgba(91,91,240,.1));border:1px solid var(--line-hi)}
+.os{width:36px;height:36px;flex:none;border-radius:11px;display:grid;place-items:center;font-size:11px;font-weight:700;
+	letter-spacing:.04em;color:var(--text);background:var(--panel-hi);border:1px solid var(--line-hi)}
 .node-id{font-size:14.5px;font-weight:650;letter-spacing:-.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .node-sub{font-size:11.5px;color:var(--sub);font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .hold{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
@@ -486,15 +462,14 @@ footer{text-align:center;font-size:11px;color:var(--dim);padding:6px 0 4px}
 .tabs::-webkit-scrollbar{display:none}
 .tabs button{flex:none;font:inherit;font-size:12px;font-weight:600;color:var(--sub);background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:7px 12px;cursor:pointer;transition:all .3s var(--ease)}
 .tabs button small{font-weight:500;color:var(--dim);margin-left:5px;font-variant-numeric:tabular-nums}
-.tabs button.sel{color:#0b1020;background:linear-gradient(140deg,var(--mint),var(--sky));border-color:transparent}
+.tabs button.sel{color:#0b1020;background:var(--mint);border-color:transparent}
 .tabs button.sel small{color:#0b1020}
 .ss{padding:11px 14px;display:flex;align-items:center;gap:11px}
 .ss .lamp{flex:none;width:8px;height:8px;border-radius:50%;background:var(--dim)}
 .ss.live .lamp{background:var(--ac)}
-.ss.st-working .lamp{background:var(--ok);animation:blink 1.6s ease-in-out infinite}
-.ss.st-waiting_workflow .lamp,.ss.st-waiting_answer .lamp,.ss.st-waiting_permission .lamp{background:var(--amber);animation:blink 1s ease-in-out infinite}
+.ss.st-working .lamp{background:var(--ok)}
+.ss.st-waiting_workflow .lamp,.ss.st-waiting_answer .lamp,.ss.st-waiting_permission .lamp{background:var(--amber)}
 .ss.st-stale .lamp,.ss.st-unknown .lamp{background:#d98a0a;opacity:.7}
-@keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
 .ss-main{flex:1;min-width:0}
 .ss-sub{font-size:11px;color:var(--sub);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ss-age{flex:none;font-size:11px;color:var(--dim);font-variant-numeric:tabular-nums}
@@ -506,7 +481,8 @@ footer{text-align:center;font-size:11px;color:var(--dim);padding:6px 0 4px}
 .res-row label{grid-area:1/1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--sub)}
 .res-row label small{color:var(--dim)}
 .res-row .bar{grid-area:2/1/3/3;flex:none;width:100%;height:5px;border-radius:5px;background:rgba(20,22,43,.08);overflow:hidden}
-.bar u{display:block;height:100%;width:0;border-radius:inherit;text-decoration:none;background:linear-gradient(90deg,var(--ac2),var(--ac));transition:width .9s var(--ease),background .4s}
+.bar u{display:block;height:100%;width:0;border-radius:inherit;text-decoration:none;background:var(--ac);
+	transition:width .2s,background .2s}
 .res-row.warn .bar u{background:var(--amber)}
 .res-row.hot .bar u{background:var(--rose)}
 .res-row span{grid-area:1/2;text-align:right;overflow:hidden;text-overflow:ellipsis;color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap}
@@ -528,10 +504,11 @@ footer{text-align:center;font-size:11px;color:var(--dim);padding:6px 0 4px}
 @media(max-width:700px){
 body{min-width:0}
 header{flex-direction:column;gap:var(--sp-4);padding:22px var(--sp-5)}
-.hl{font-size:26px}
+.hl{font-size:var(--sp-5)}
 h1{font-size:10.5px}
 h1 .ov{margin-left:10px}
-.sum{--metric-size:24px;width:min(100%,360px);grid-template-columns:repeat(3,minmax(0,1fr));column-gap:var(--sp-3);text-align:left;container-type:inline-size}
+.sum{--metric-size:var(--sp-5);width:min(100%,360px);grid-template-columns:repeat(3,minmax(0,1fr));column-gap:var(--sp-3);text-align:left;
+	container-type:inline-size}
 .sum .states{justify-content:flex-start;font-size:9px;gap:3px 9px}
 .sum div{row-gap:var(--sp-1)}
 .sum div span{font-size:10px;letter-spacing:.04em}
@@ -542,7 +519,7 @@ header .rt .live{top:8px;right:20px}
 .fresh{margin-top:6px}
 header .hd{align-self:stretch}
 .lease{margin-top:12px;width:100%;padding:10px 12px 12px;gap:10px}
-.lease .lt b{font-size:14px}.lease .lt span{font-size:11px}.lease em{font-size:19px;padding-left:10px}
+.lease .lt b{font-size:14px}.lease .lt span{font-size:11px}.lease em{font-size:var(--sp-4);padding-left:10px}
 .hub{--rp:250px}
 .foot{display:contents}
 .foot .lg,.foot .hint{position:absolute;z-index:2}
@@ -569,14 +546,14 @@ header .hd{align-self:stretch}
 /* 44px tall grab strip: the whole strip is the drag/tap target, the pill inside is the visual */
 .grab{display:grid;place-items:center;height:44px;cursor:grab;touch-action:none;position:relative;z-index:4}
 .grab i{display:block;width:42px;height:4px;border-radius:2px;background:#d3d6ec}
-#veil.on.peek{background:rgba(236,237,252,.22);backdrop-filter:blur(5px);-webkit-backdrop-filter:blur(5px)}
+#veil.on.peek{background:rgba(236,237,252,.22)}
 .dwrap{display:block;overflow-y:auto;padding:34px 22px calc(var(--sheet-pad-b) + env(safe-area-inset-bottom));transition:opacity .7s .25s,transform .7s .25s;overscroll-behavior-y:none}
 #sheet[data-mode="hub"] .dwrap{padding-top:68px}
 .x{top:16px;right:16px;width:var(--hit-min);height:var(--hit-min)}
 .dl{display:grid;grid-template-columns:116px 1fr;column-gap:12px;align-items:center}
 .big{grid-row:1/3;width:116px;height:116px;margin:0}
 .big .node{transform:translate(-50%,-50%) scale(.9)}
-.dl h2{font-size:32px;align-self:end}
+.dl h2{font-size:var(--sp-5);align-self:end}
 .dl p.s{align-self:start;font-size:13px}
 .dl .kv{grid-column:1/-1;font-size:13.5px;margin:18px 0 28px;gap:11px 16px}
 .wk{padding:18px 0 18px 34px}.wk b{font-size:18px}.wk .why{font-size:13.5px}
@@ -586,8 +563,7 @@ header .hd{align-self:stretch}
 }
 @media(max-width:700px) and (max-height:719px){
 header{gap:6px;padding:16px 18px}
-header .sum{--metric-size:22px}
-header .hl{font-size:22px}
+header .hl{font-size:var(--sp-4)}
 header .lease{margin-top:5px;padding:6px 8px}
 .hint{display:none}
 #zc{bottom:61px}
@@ -596,19 +572,21 @@ header .lease{margin-top:5px;padding:6px 8px}
 /* ---- phone grid map: hub on top, node cards in a measured grid below ---- */
 /* Design tokens for the grid component; JS reads the geometry tokens, so spacing lives here only. */
 @media(max-width:700px){
-#world.gr{--gr-orb:76px;--gr-gap:10px;--gr-name-w:116px;--gr-hub-gap:6px;--gr-queue-h:34px}
+#world.gr{--gr-orb:76px;--gr-gap:10px;--gr-name-w:116px;--gr-hub-gap:var(--sp-4)}
 #world.gr .nm{top:calc(100% + 2px)}
 #world.gr .nm b{font-size:13px;max-width:var(--gr-name-w);overflow:hidden;text-overflow:ellipsis}
 #world.gr .nm span{display:none}
-#world.gr .nchips{margin-top:4px;gap:4px}
+#world.gr .nchips{margin-top:var(--sp-1);gap:var(--sp-1)}
+#world.gr .nchip.dn~.nchip.rk,#world.gr .nchip.dg~.nchip.rk{display:none}
 #world.gr .nchip{font-size:9px;letter-spacing:.06em;padding:3px 8px}
 #world.gr .bl{transform:scale(.78);transform-origin:100% 0}
 #world.gr .bl.bad,#world.gr .bl.wait{display:none}
 #world.gr .bl.run.zero{display:none}
 #world.gr .q{display:none}
 #world.gr #links path.fl,#world.gr #links path.draw{display:none}
-/* queue summary: one tappable pill under the hub instead of orbiting markers */
-.ql.pill{pointer-events:auto;cursor:pointer;white-space:nowrap;padding:8px 14px;border-radius:999px;background:var(--panel-hi);
+/* queue summary: one tappable pill beside the hub, clear of the link lanes below it */
+.ql.pill{transform:translateY(-50%);pointer-events:auto;cursor:pointer;white-space:nowrap;padding:8px 14px;border-radius:999px;
+	background:var(--panel-hi);
 	border:1px solid var(--line-hi);color:var(--sub);font-size:11px;letter-spacing:.1em;box-shadow:none}
 /* node filter bar: chips wrap to a second row so none is clipped; 44px touch height (labels shortened in <=480px) */
 #fbar{max-width:100%}
@@ -626,9 +604,8 @@ header .lease{margin-top:5px;padding:6px 8px}
 #fbar .fchip[data-f=down]::before{content:"Down"}
 #fbar .fchip[data-f=attn]::before{content:"Attn"}
 #fbar .fchip[data-f=assigned]::before{content:"Asgd"}
-#fbar .fchip[data-f=darwin]::before{content:"Mac"}
-#fbar .fchip[data-f=win32]::before{content:"Win"}
-#fbar .fchip[data-f=linux]::before{content:"Linux"}
+#fbar .fchip[data-f=darwin],#fbar .fchip[data-f=win32],#fbar .fchip[data-f=linux]{display:none}
+.sum .states{display:none}
 #fbar .fchip[data-f=__clear]::before{content:"Clear"}
 }
 @media(max-width:350px){.sum div{grid-template-rows:2.5em auto}.sum{column-gap:8px}}
@@ -667,7 +644,7 @@ ${'<div class="grab" id="grab" role="button" tabindex="0" aria-label="Resize det
 	<div class="wrap">
 	<main>
 		<section class="glass runtime rise" style="--i:1">
-			<div class="eyebrow">Gajae Code Runtime · Hub</div>
+			<div class="eyebrow">Hub</div>
 			<div class="rt-row"><div class="rt-ver" id="rt-ver">—</div><div class="rt-age" id="rt-age"></div></div>
 			<div class="chips">
 				<span class="chip" id="rt-broker"><b></b><span>Broker</span></span>
@@ -1071,7 +1048,7 @@ ${'<div class="grab" id="grab" role="button" tabindex="0" aria-label="Resize det
 	function FP(d,x){return '<path class="f" '+(x||'')+' d="'+d+'"/><path d="'+d+'"/>'}
 	var ICON={
 		darwin:FP('M11.5 8h21A4.5 4.5 0 0 1 37 12.5v11a4.5 4.5 0 0 1-4.5 4.5h-21A4.5 4.5 0 0 1 7 23.5v-11A4.5 4.5 0 0 1 11.5 8z')+'<path d="M22 28v8M15.5 37h13"/><path d="M7 23.5h30" opacity=".4"/><path class="ac" d="M17.5 13.5v3.2M26.5 13.5v3.2M22 12.5v6M16.8 20c3 2 7.4 2 10.4 0"/>',
-		win32:FP('M7 11l13-2v13H7z')+FP('M23 8.5L38 6v16H23z','style="animation-delay:.35s"')+FP('M7 25h13v13L7 36z','style="animation-delay:.7s"')+FP('M23 25h15v16l-15-2.5z','style="animation-delay:1.05s"'),
+		win32:FP('M7 11l13-2v13H7z')+FP('M23 8.5L38 6v16H23z')+FP('M7 25h13v13L7 36z')+FP('M23 25h15v16l-15-2.5z'),
 		linux:FP('M22 5.5c-3.6 0-5.6 3.2-5.6 7 0 2.4-.9 3.6-2.6 7C11.9 23.4 11 28 14 32c1.2 1.6 3.4 2.6 8 2.6s6.8-1 8-2.6c3-4 2.1-8.6.2-12.5-1.7-3.4-2.6-4.6-2.6-7 0-3.8-2-7-5.6-7z')+'<path class="bel" d="M22 17c-3 0-5 3.5-5 8s2 7.5 5 7.5 5-3 5-7.5-2-8-5-8z"/><circle class="ey" cx="19.4" cy="11" r="1.05"/><circle class="ey" cx="24.6" cy="11" r="1.05"/><path class="acf" d="M20.3 13.4h3.4L22 15.8z"/><path d="M14.4 22c-2 2.2-3 5-1.8 8M29.6 22c2 2.2 3 5 1.8 8"/><path class="ac" d="M16.4 37c-2.8 0-4.4-.6-4-2 .4-1.2 2.3-1.6 4.4-.8M27.6 37c2.8 0 4.4-.6 4-2-.4-1.2-2.3-1.6-4.4-.8"/>'
 	};
 	/* ---- Server observation fields; missing telemetry remains unknown. ---- */
@@ -1334,7 +1311,14 @@ ${'<div class="grab" id="grab" role="button" tabindex="0" aria-label="Resize det
 	function ctrl(i){var p=pos[V.units[i].id],cx=HUBP.x,cy=HUBP.y;if(MOB)return {x:(cx+p.x)/2,y:(cy+p.y)/2};return {x:(cx+p.x)/2,y:(cy+p.y)/2-((p.y>cy)?-30:30)}}
 	function r1(v){return Math.round(v*10)/10}
 	/* The one link of a hub-node pair: the shared hub-to-node curve, trimmed so the stroke starts outside the hub core and ends at the node orb edge. */
+	/* Phone grid: trunk to a bus, then a gutter lane left of the node column, so no link crosses another node. */
+	function gridLinkD(i){
+		var p=pos[V.units[i].id],h=HUBP,g=GRL,row=Math.floor(i/g.cols),laneX=r1(g.gx+(i%g.cols)*g.cellW-g.gap/2),y0=r1(h.y+52*HS);
+		if(row===0)return 'M'+r1(h.x)+' '+y0+' V'+r1(g.busY)+' H'+r1(p.x)+' V'+r1(p.y-NS/2);
+		return 'M'+r1(h.x)+' '+y0+' V'+r1(g.busY)+' H'+laneX+' V'+r1(p.y)+' H'+r1(p.x-NS/2);
+	}
 	function linkD(i){
+		if(MOB&&GRL)return gridLinkD(i);
 		var p=pos[V.units[i].id],c=ctrl(i),h=HUBP,hubClear=52*HS,nodeR=NS/2;
 		function pt(t){return {x:(1-t)*(1-t)*h.x+2*(1-t)*t*c.x+t*t*p.x,y:(1-t)*(1-t)*h.y+2*(1-t)*t*c.y+t*t*p.y}}
 		var a=0,b=1;
@@ -1641,6 +1625,7 @@ ${'<div class="grab" id="grab" role="button" tabindex="0" aria-label="Resize det
 	}
 	/* ---- phone grid: hub on top, cards in rows; every size is measured, nothing overlaps by construction ---- */
 	function grTok(name,fb){var v=parseFloat(getComputedStyle(stage).getPropertyValue(name));return isFinite(v)?v:fb}
+	var GRL=null;
 	function gridMobile(R){
 		var N=V.units.length,cx=W/2;
 		HS=N>12?.5:N>6?.56:.62;
@@ -1660,13 +1645,14 @@ ${'<div class="grab" id="grab" role="button" tabindex="0" aria-label="Resize det
 		var cols=Math.max(1,Math.min(N,Math.floor((R.x1-R.x0+gap)/cellW)));
 		if(N>8)cols=Math.max(2,cols);
 		var gw=cols*cellW-gap,gx=cx-gw/2;
-		var gy=hy+hb/2+(V.queue.length?grTok('--gr-queue-h',34):grTok('--gr-hub-gap',6)+8);
+		var gy=hy+hb/2+grTok('--gr-hub-gap',16)+8;
 		V.units.forEach(function(v,i){
 			var x=gx+(i%cols+.5)*cellW,y=gy+Math.floor(i/cols)*cellH+NS0/2;
 			base[v.id]={x:x,y:y};pos[v.id]={x:x,y:y};DLIM[v.id]=0;
 			var el=NEL[v.id];el.style.left=x+'px';el.style.top=y+'px';
 		});
 		var rows=Math.ceil(N/cols);
+		GRL={gx:gx,cellW:cellW,cols:cols,gap:gap,busY:(hy+52*HS+gy)/2};
 		CB={x0:gx-12,y0:R.y0-4,x1:gx+gw+12,y1:gy+(rows-1)*cellH+cellH-gap+8};
 		var kf=Math.min(1,(R.x1-R.x0)/(CB.x1-CB.x0),(R.y1-R.y0)/(CB.y1-CB.y0));
 		var cmx=(CB.x0+CB.x1)/2,cmy=(CB.y0+CB.y1)/2;
@@ -1943,7 +1929,7 @@ ${'<div class="grab" id="grab" role="button" tabindex="0" aria-label="Resize det
 		if(!V.queue.length)return;
 		var ql=document.createElement('div');
 		if(MOB){
-			ql.className='ql pill';ql.style.left=HUBP.x+'px';ql.style.top=(HUBP.y+HUBBOX/2*HS+6)+'px';
+			ql.className='ql pill';ql.style.left=(HUBP.x+HUBBOX/2*HS+8)+'px';ql.style.top=HUBP.y+'px';
 			ql.textContent=V.queue.length+' queued';
 			ql.setAttribute('role','button');ql.setAttribute('tabindex','0');ql.setAttribute('aria-label','Open hub overview, '+V.queue.length+' queued');
 			ql.onclick=function(){var h=$('hubnode');if(h)openHub(h)};
@@ -1954,7 +1940,7 @@ ${'<div class="grab" id="grab" role="button" tabindex="0" aria-label="Resize det
 		stage.appendChild(ql);
 	}
 	/* Colors and classes follow live status; no element is rebuilt for a status change. */
-	/* Single-responsibility link renderer: path-down dots first, per-direction SSH state from real data fields, a static dash while a dispatch is in flight, and a one-shot pulse on a confirmed state change only. Nothing is rebuilt for a status change. */
+	/* Link renderer: path-down dots, per-direction SSH state from real data, a static dash while dispatching. */
 	function patchLink(v){
 		var g=LNK[v.id];if(!g||!g.p)return;
 		var out=v.out?v.out.s:'unk',inn=v.inn?v.inn.s:'unk',down=v.vis==='down',go=v.disp&&!down;
@@ -1966,7 +1952,7 @@ ${'<div class="grab" id="grab" role="button" tabindex="0" aria-label="Resize det
 		g.p.setAttribute('marker-start','url(#lk-ms-'+inn+')');
 		if(g.s0)g.s0.setAttribute('class','gs-'+inn);if(g.s1)g.s1.setAttribute('class','gs-'+out);
 		if(g.h)g.h.setAttribute('aria-label',(down?'Path down. ':'')+'SSH hub to '+v.id+': '+SSL[out]+'. '+v.id+' to hub: '+SSL[inn]);
-		if(!first)g.p.classList.add('pulse');
+		
 	}
 	function patchStatus(){
 		V.units.forEach(function(v){patchLink(v)});
@@ -2180,7 +2166,11 @@ ${'<div class="grab" id="grab" role="button" tabindex="0" aria-label="Resize det
 		if(n.enabled===false)sub='Paused'+(s.level==='healthy'?'':' · '+sub);
 		else if(n.draining===true)sub='Draining'+(s.level==='healthy'?'':' · '+sub);
 		return '<div class="dl"><div class="big"><div class="node '+v.vis+'">'+orbHtml(v)+'</div></div><h2>'+esc(v.id)+'</h2><p class="s">'+esc(sub)+' · '+esc(OSN[v.os]||v.os)+' '+esc(v.arch)+'</p>'+
-			'<div class="kv"><span>Marked active</span><b>'+n.currentLoad+'</b><span>Held, not running</span><b>'+n.heldNotRunning+'</b><span>SDK / Model</span><b>'+(n.sdkReady&&n.modelReady?'Ready':'Not ready')+'</b><span>New work</span><b>'+(adm?(adm.open?'Open':'Held · '+esc(adm.reasons.map(reasonLabel).join(', '))):'Sampling off')+'</b>'+health+(v.risk.count?'<span>Tasks at risk</span><b>'+v.risk.count+'</b>':'')+'<span>Lifetime tasks</span><b>'+n.assignedTotal+'</b><span>Wins / Trouble</span><b>'+n.succeeded+' / '+n.troubled+'</b></div></div>'+
+			'<div class="kv"><span>Marked active</span><b>'+n.currentLoad+'</b><span>Held, not running</span><b>'+
+				n.heldNotRunning+'</b><span>SDK / Model</span><b>'+(n.sdkReady&&n.modelReady?'Ready':'Not ready')+'</b><span>New work</span><b>'+
+				(adm?(adm.open?'Open':'Held · '+esc(adm.reasons.map(reasonLabel).join(', '))):'Sampling off')+'</b>'+
+				health+(v.risk.count?'<span>Tasks at risk</span><b>'+v.risk.count+'</b>':'')+'<span>Lifetime tasks</span><b>'+
+				n.assignedTotal+'</b><span>Succeeded / Failed</span><b>'+n.succeeded+' / '+n.troubled+'</b></div></div>'+
 			'<div class="dr">'+callout(v)+'<div class="rsec"><h4>Resources</h4><div data-res="'+esc(v.id)+'">'+resHtml(n)+'</div></div><h4>Assigned work · '+ts.length+'</h4>'+
 			(ts.length?ts.map(function(t,i){
 				var p=phaseLabel(t),d=detailCache[t.id],why=d&&d.selection&&d.selection.reason?WHY[d.selection.reason]||d.selection.reason:null,bad=p[0]==='bad'||UNKNOWN[t.phase];

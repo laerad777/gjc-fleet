@@ -89,7 +89,6 @@ describe("rendered light dashboard contrast", () => {
 		expect(rule(".wrap")["max-width"]).toBe("960px");
 		expect(rule(".steps")["grid-template-columns"]).toBe("repeat(7,1fr)");
 		expect(rule(".tk.open .more")["grid-template-rows"]).toBe("1fr");
-		expect(rule(".rise").animation).toBe("rise .7s var(--ease) forwards");
 		expect(css).toContain("@media(prefers-reduced-motion:reduce)");
 		expect(css).toContain("@media(min-width:680px)");
 		expect(css).toContain("@media(max-width:700px)");
