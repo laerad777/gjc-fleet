@@ -1010,10 +1010,10 @@ for (const scenario of ["slow probe", "unmeasurable"] as const) test(`R1 (${scen
 	}
 	gap = Math.max(gap, stoppedAt - last);
 	// Without per-call gates the fast node waits for whole passes (seconds); here only its own sample/probe.
-	// Load-tolerant bounds: 1.5 s still sits far below an ungated whole-pass wait, and 10 calls in 4 s is
-	// one per 400 ms where an ungated node sees one per pass (seconds); the count carries the signal.
 	expect(gap).toBeLessThan(1_500);
 	expect(calls.length).toBeGreaterThanOrEqual(10);
+	// The slow work may take longer to finish; the fast node must still start 10 observations within 4 s.
+	expect(calls[9]!.start - startedAt).toBeLessThanOrEqual(4_000);
 	expect(stats.other).toEqual([]);
 	// Queue passes ran and probed: the slow node only when its sample succeeded, never when it failed.
 	expect(f.probes("fast")).toBeGreaterThanOrEqual(1);
