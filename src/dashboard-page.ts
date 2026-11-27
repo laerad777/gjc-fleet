@@ -39,7 +39,7 @@ body{font-family:var(--sans);color:var(--text);line-height:1.45;-webkit-font-smo
 header{position:absolute;top:0;left:0;right:0;padding:30px 44px;display:flex;justify-content:space-between;align-items:flex-start;gap:20px;z-index:5;pointer-events:none}
 header .hd,header .rt{pointer-events:auto;max-width:100%;min-width:0}
 h1{font-size:11px;letter-spacing:.32em;font-weight:600;color:var(--mut)}
-.hl{font-family:var(--disp);font-weight:400;font-size:36px;letter-spacing:-.025em;line-height:1.12;margin-top:8px}
+.hl{font-family:var(--disp);font-weight:400;font-size:32px;letter-spacing:-.025em;line-height:1.12;margin-top:8px}
 .hl b{font-weight:600;font-style:italic;background:linear-gradient(100deg,var(--ac),#9a7bff);-webkit-background-clip:text;background-clip:text;color:transparent}
 .hl .soft{font-weight:400;color:var(--mut)}
 h1 .ov{display:inline-flex;align-items:center;gap:7px;margin-left:16px;padding:4px 11px 4px 9px;border-radius:99px;letter-spacing:.2em;font-size:9.5px;vertical-align:1px;text-transform:uppercase;
@@ -52,10 +52,10 @@ h1 .ov.dn .od{background:var(--rose)}
 h1 .ov.unk{background:rgba(90,96,128,.09);box-shadow:0 0 0 1px rgba(90,96,128,.3) inset;color:#4a4f6b}
 h1 .ov.unk .od{background:transparent;box-shadow:0 0 0 1.5px #9aa0bd inset}
 @keyframes pls{0%{box-shadow:0 0 0 0 rgba(240,165,42,.6)}70%{box-shadow:0 0 0 7px rgba(240,165,42,0)}100%{box-shadow:0 0 0 0 rgba(240,165,42,0)}}
-.sum{--metric-size:36px;display:grid;grid-template-columns:repeat(3,max-content);column-gap:var(--sp-5);justify-content:end;text-align:right;align-items:start}
+.sum{--metric-size:28px;display:grid;grid-template-columns:repeat(3,max-content);column-gap:var(--sp-5);justify-content:end;text-align:right;align-items:start}
 .sum div{display:grid;grid-template-rows:1.25em auto;row-gap:var(--sp-1);min-width:0}
 .sum div span{display:block;font-size:11px;line-height:1.25;color:var(--mut);letter-spacing:.10em;text-transform:uppercase;font-weight:500;white-space:nowrap}
-.sum div strong{font-family:var(--disp);font-size:var(--metric-size);line-height:1;font-weight:400;letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.sum div strong{font-family:var(--sans);font-size:var(--metric-size);line-height:1;font-weight:600;letter-spacing:-.01em;font-variant-numeric:tabular-nums}
 .sum .w strong{color:#c4303f}
 .sum .states{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:4px 12px;justify-content:flex-end;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--sub);margin-top:2px}
 .sum .st{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
@@ -99,7 +99,7 @@ header .rt .live.off{color:#b42a3a}
 .lease .ld2{flex:none;width:9px;height:9px;border-radius:50%;background:var(--amber);animation:pls 2s infinite}
 .lease .lt b{display:block;font-family:var(--disp);font-weight:600;font-size:15px;color:#5c3a05}
 .lease .lt span{display:block;font-size:12px;color:#6f5121;margin-top:2px}
-.lease em{font-style:normal;font-family:var(--disp);font-weight:600;font-size:22px;color:#8a5206;font-variant-numeric:tabular-nums;margin-left:6px;padding-left:14px;border-left:1px solid rgba(240,165,42,.35)}
+.lease em{font-style:normal;font-family:var(--sans);font-weight:600;font-size:22px;color:#8a5206;font-variant-numeric:tabular-nums;margin-left:6px;padding-left:14px;border-left:1px solid rgba(240,165,42,.35)}
 .lease .lbar{position:absolute;left:0;right:0;bottom:0;height:3px;background:rgba(240,165,42,.15);display:none}
 .lease.wp .lbar{display:block}
 .lease .lbar i{display:block;height:100%;background:linear-gradient(90deg,#f6c26a,var(--amber));transition:width 1s linear}
@@ -548,7 +548,7 @@ header{flex-direction:column;gap:var(--sp-4);padding:22px var(--sp-5)}
 .hl{font-size:26px}
 h1{font-size:10.5px}
 h1 .ov{margin-left:10px}
-.sum{--metric-size:29px;width:min(100%,360px);grid-template-columns:repeat(3,minmax(0,1fr));column-gap:var(--sp-3);text-align:left;container-type:inline-size}
+.sum{--metric-size:24px;width:min(100%,360px);grid-template-columns:repeat(3,minmax(0,1fr));column-gap:var(--sp-3);text-align:left;container-type:inline-size}
 .sum .states{justify-content:flex-start;font-size:9px;gap:3px 9px}
 .sum div{row-gap:var(--sp-1)}
 .sum div span{font-size:10px;letter-spacing:.04em}
@@ -601,7 +601,7 @@ header .hd{align-self:stretch}
 }
 @media(max-width:700px) and (max-height:719px){
 header{gap:6px;padding:16px 18px}
-header .sum{--metric-size:28px}
+header .sum{--metric-size:22px}
 header .hl{font-size:22px}
 header .lease{margin-top:5px;padding:6px 8px}
 .hint{display:none}
