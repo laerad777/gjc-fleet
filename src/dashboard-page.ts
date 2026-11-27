@@ -1342,7 +1342,7 @@ header .lease{margin-top:5px;padding:6px 8px}
 		var el=NEL[n.id];
 		if(el){el.style.setProperty('--load',dr.load);el.classList.toggle('stalled',dr.stalled)}
 	}
-	var tlast=0,twrite=0;
+	var tlast=0,twrite=0,tlink=0,linkDirty=[];
 	function startLoop(){if(!RM&&!rafLive){rafLive=true;tlast=0;requestAnimationFrame(frame)}}
 	if(RMQ&&RMQ.addEventListener)RMQ.addEventListener('change',function(){try{RM=RMQ.matches}catch(e){}
 		if(RM){BO=Object.create(null);stage.querySelectorAll('.node.gl').forEach(function(e){e.classList.remove('gl');e.style.removeProperty('--gdx');e.style.removeProperty('--gdy')})}
@@ -1352,7 +1352,7 @@ header .lease{margin-top:5px;padding:6px 8px}
 		var dt=Math.min(.05,(ts-tlast)/1000||.016);tlast=ts;
 		/* The spring integrates at rAF rate; DOM writes are capped at ~30fps and skipped while a
 		 * node's rounded drift offset is unchanged, so settled/idle nodes stop touching the DOM. */
-		var write=ts-twrite>=33,moved=[];
+		var write=ts-twrite>=33;
 		if(V)V.units.forEach(function(v,i){
 			var o=off[v.id],el=NEL[v.id],dr=DRIFT[v.id];if(!o||!el)return;
 			var amp=(RM||!dr||!dr.live||v.vis==='down')?0:(.25+.75*dr.load)*(MOB?.6:1)*(DLIM[v.id]==null?1:DLIM[v.id]);
@@ -1370,9 +1370,19 @@ header .lease{margin-top:5px;padding:6px 8px}
 			/* Drift rides on transform, not left/top: the write stays on the compositor and no
 			 * longer invalidates layout for every node on every write tick. */
 			var dx=r1(o.x),dy=r1(o.y);
-			if(o.dx!==dx||o.dy!==dy){o.dx=dx;o.dy=dy;moved.push(i);el.style.transform='translate3d('+dx+'px,'+dy+'px,0)'}
+			if(o.dx!==dx||o.dy!==dy){o.dx=dx;o.dy=dy;el.style.transform='translate3d('+dx+'px,'+dy+'px,0)';if(!o.ld){o.ld=1;linkDirty.push(i)}}
 		});
-		if(write){twrite=ts;if(moved.length&&V&&Object.keys(LNK).length)paint(moved)}
+		if(write){
+			twrite=ts;
+			/* Links repaint on their own ~10Hz cadence: node motion keeps the 30fps write tick,
+			 * while curve recompute + SVG invalidation (the raster-heavy part) runs at most 10x/s.
+			 * A line trails its node by at most ~100ms; layout and status changes still paint at once. */
+			if(ts-tlink>=100&&linkDirty.length&&V&&Object.keys(LNK).length){
+				tlink=ts;paint(linkDirty);
+				for(var q=0;q<linkDirty.length;q++){var u=V.units[linkDirty[q]];if(u&&off[u.id])off[u.id].ld=0}
+				linkDirty=[];
+			}
+		}
 		if(!RM)requestAnimationFrame(frame);else rafLive=false;
 	}
 	/* One-shot state-change flash: a recovery glows green, a drop fades to gray. */
@@ -1749,7 +1759,7 @@ header .lease{margin-top:5px;padding:6px 8px}
 		var R=syncClip();nodePicker();
 		var oldPos=pos;BO=Object.create(null);
 		stage.querySelectorAll('.node,.hub,.q,.ql').forEach(function(e){e.remove()});
-		links.innerHTML='';NEL=Object.create(null);LNK=Object.create(null);base=Object.create(null);pos=Object.create(null);off=Object.create(null);nodeSig=Object.create(null);
+		links.innerHTML='';linkDirty=[];NEL=Object.create(null);LNK=Object.create(null);base=Object.create(null);pos=Object.create(null);off=Object.create(null);nodeSig=Object.create(null);
 		var cx=W/2,cy=Math.max(R.y0+45,Math.min(H/2+18,R.y1-45)),rx=Math.min(W*.34,440),ry=Math.min(H*.3,230);
 		if(DENSE){cx=(R.x0+R.x1)/2;cy=(R.y0+R.y1)/2}
 		var ang=V.units.map(function(_,i){return N===1?Math.PI/2:(-90-180/N+i*360/N)*Math.PI/180});
