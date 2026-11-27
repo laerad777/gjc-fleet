@@ -944,3 +944,10 @@ test("bulk reads used by the dashboard equal the per-task reads: resourceReturnS
 	store.close();
 	await rm(dir, { recursive: true, force: true });
 });
+
+test("legend and hint share a wrapping footer, and the filter bar wraps instead of clipping", () => {
+	const html = renderDashboardHtml();
+	expect(html).toMatch(/<div class="foot">\s*<div class="lg">[\s\S]*<div class="hint" id="hint"><\/div>\s*<\/div>/);
+	expect(html).toContain(".foot{position:absolute;");
+	expect(html).not.toMatch(/#fbar\{[^}]*(nowrap|overflow-x)/);
+});

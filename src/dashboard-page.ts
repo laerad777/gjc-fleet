@@ -313,8 +313,12 @@ svg#links{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
 .hit:focus-visible{outline:none;stroke:var(--ac);stroke-opacity:.55}
 #sheet .lc:focus-visible{outline:2px solid var(--ac);outline-offset:2px;border-radius:8px}
 @media(pointer:coarse){.hit{stroke-width:24px}}
-.hint{position:absolute;bottom:26px;right:44px;text-align:right;font-family:var(--disp);font-style:italic;font-size:14px;color:var(--mut);z-index:2}
-.lg{position:absolute;bottom:22px;left:44px;font-size:11px;color:var(--mut);letter-spacing:.1em;text-transform:uppercase;display:flex;flex-direction:column;gap:9px;z-index:2}
+/* legend and hint share one wrapping footer, so a narrow window stacks them instead of overlapping */
+.foot{position:absolute;left:44px;right:44px;bottom:22px;display:flex;flex-wrap:wrap;align-items:flex-end;z-index:2;pointer-events:none}
+.foot{justify-content:space-between;gap:8px 24px}
+.foot>*{pointer-events:auto}
+.hint{margin-left:auto;text-align:right;font-family:var(--disp);font-style:italic;font-size:14px;color:var(--mut);z-index:2}
+.lg{font-size:11px;color:var(--mut);letter-spacing:.1em;text-transform:uppercase;display:flex;flex-direction:column;gap:9px}
 .lg .lr1{display:flex;gap:24px;align-items:center}
 .lg span{display:flex;gap:8px;align-items:center}
 .lg .lab{font-weight:600;color:var(--ink);letter-spacing:.2em;font-size:10px;margin-right:-6px}
@@ -562,6 +566,8 @@ header .hd{align-self:stretch}
 .lease{margin-top:12px;width:100%;padding:10px 12px 12px;gap:10px}
 .lease .lt b{font-size:14px}.lease .lt span{font-size:11px}.lease em{font-size:19px;padding-left:10px}
 .hub{--rp:250px}
+.foot{display:contents}
+.foot .lg,.foot .hint{position:absolute;z-index:2}
 .hint{left:0;right:0;text-align:center;bottom:104px;font-size:13px}
 #zc{right:14px;bottom:140px;--ctl-h:var(--ctl-h-touch);--ctl-seg-w:var(--ctl-h-touch)}#find-btn{font-size:13px}#star-x{width:44px}
 /* tight rows: the focus pill stands in for the find button; the popup anchors to the whole control row */
@@ -569,8 +575,7 @@ header .hd{align-self:stretch}
 #find-node{position:static}
 #find-pop{left:0;right:0;width:auto}
 #find-q{font-size:16px}
-#fbar{flex-wrap:nowrap;overflow-x:auto;margin-top:12px;padding-bottom:4px;max-width:100%;scrollbar-width:none}
-#fbar::-webkit-scrollbar{display:none}
+#fbar{margin-top:12px;max-width:100%}
 .fchip{min-height:44px;padding:0 16px;font-size:13px;flex:none}
 .lg{left:20px;right:20px;bottom:16px;gap:8px;font-size:11px}
 .lg .lr1{flex-wrap:wrap;gap:6px 16px}
@@ -626,9 +631,8 @@ header .lease{margin-top:5px;padding:6px 8px}
 #world.gr .hub .halo{display:none}
 /* queue summary: one tappable pill under the hub instead of orbiting markers */
 .ql.pill{pointer-events:auto;cursor:pointer;white-space:nowrap;padding:8px 14px;border-radius:999px;background:var(--panel-hi);border:1px solid var(--line-hi);color:var(--sub);font-size:11px;letter-spacing:.1em;box-shadow:0 8px 20px -12px rgba(50,50,150,.4)}
-/* node filter bar: horizontal scroll with an edge fade, 44px touch height (labels shortened in the <=480px block) */
-#fbar{flex-wrap:nowrap;overflow-x:auto;max-width:100%;scrollbar-width:none;padding-bottom:4px;-webkit-mask-image:linear-gradient(90deg,#000 80%,transparent);mask-image:linear-gradient(90deg,#000 80%,transparent)}
-#fbar::-webkit-scrollbar{display:none}
+/* node filter bar: chips wrap to a second row so none is clipped; 44px touch height (labels shortened in <=480px) */
+#fbar{max-width:100%}
 .fchip{min-height:44px;flex:none}
 }
 /* Text-minimal layer: only essential copy stays on small phones. */
@@ -669,8 +673,10 @@ header .lease{margin-top:5px;padding:6px 8px}
 <div id="spot"></div>
 <div id="stage" tabindex="0" aria-label="Fleet map" data-testid="map-viewport"><div id="world" data-testid="map-world"><svg id="links"></svg></div></div>
 <div id="zc" role="group" aria-label="Map controls"><div id="find-node" hidden><button type="button" id="find-btn" data-testid="find-node" aria-haspopup="listbox" aria-expanded="false" aria-label="Find node" title="Find node"><svg viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.2"/><path d="M10.2 10.2L14 14"/></svg><span>Find node…</span></button><div id="find-pop" hidden><input id="find-q" type="text" role="combobox" aria-expanded="true" aria-autocomplete="list" aria-controls="find-list" aria-activedescendant="" aria-label="Search nodes" placeholder="Search nodes…" autocomplete="off" spellcheck="false"><ul id="find-list" role="listbox" aria-label="Matching nodes"></ul></div></div><div id="star-pill" role="status" hidden><i class="fdot" id="star-dot"></i><span id="star-name"></span><button type="button" id="star-x" aria-label="Clear node focus" title="Clear node focus (Esc)"><svg viewBox="0 0 16 16"><path d="M3 3l10 10M13 3L3 13"/></svg></button></div><div class="zseg"><button type="button" id="zo" data-testid="zoom-out" aria-label="Zoom out" title="Zoom out (-)"><svg viewBox="0 0 16 16"><path d="M3 8h10"/></svg></button><button type="button" id="zg" data-testid="group-collapse" aria-label="Collapse expanded groups" title="Collapse groups" hidden>Group</button><output id="zv" data-testid="zoom-level" aria-live="polite" aria-label="Zoom level">100%</output><button type="button" id="zi" data-testid="zoom-in" aria-label="Zoom in" title="Zoom in (+)"><svg viewBox="0 0 16 16"><path d="M3 8h10M8 3v10"/></svg></button><button type="button" id="zr" data-testid="zoom-reset" aria-label="Fit map" title="Fit to screen (0, double-tap)"><svg viewBox="0 0 16 16"><path d="M2.5 6V2.5H6M10 2.5h3.5V6M13.5 10v3.5H10M6 13.5H2.5V10"/></svg></button></div></div>
+<div class="foot">
 <div class="lg"><div class="lr1"><span><svg width="34" height="10" viewBox="0 0 34 10"><line x1="0" y1="5" x2="28" y2="5" style="stroke:var(--ac);stroke-dasharray:var(--lk-dash-go)" stroke-width="2"/><path d="M25 1l8 4-8 4z" style="fill:var(--ac)"/></svg>Dispatching work</span><span><svg width="34" height="10" viewBox="0 0 34 10"><line x1="0" y1="5" x2="28" y2="5" style="stroke:var(--lk-down);stroke-dasharray:var(--lk-dash-down)" stroke-width="2"/></svg>Path down</span><span class="lab">SSH</span><span><svg width="34" height="10" viewBox="0 0 34 10"><line x1="0" y1="5" x2="28" y2="5" style="stroke:var(--lk-ok)" stroke-width="2"/><path d="M25 1l8 4-8 4z" style="fill:var(--lk-ok)"/></svg>Observed</span><span><svg width="34" height="10" viewBox="0 0 34 10"><line x1="0" y1="5" x2="24" y2="5" style="stroke:var(--lk-wait)" stroke-width="2"/><path d="M29 1l4 4-4 4-4-4z" style="fill:var(--lk-wait)"/></svg>Stale</span><span><svg width="34" height="10" viewBox="0 0 34 10"><line x1="0" y1="5" x2="28" y2="5" style="stroke:var(--lk-unk)" stroke-width="2"/><path d="M25 1l8 4-8 4z" style="fill:none;stroke:var(--lk-unk);stroke-width:1.4"/></svg>Not checked</span></div></div>
 <div class="hint" id="hint"></div>
+</div>
 <div id="tip"></div><div id="veil"></div>
 <div id="sheet" data-testid="sheet" data-mode="node" role="dialog" aria-modal="true" aria-label="Fleet details" aria-hidden="true" inert><div class="glow"></div><div class="grab" id="grab" role="button" tabindex="0" aria-label="Resize detail panel" title="Drag or tap to resize the panel"><i></i></div>
 	<button class="x" id="cl" aria-label="Close"><svg width="16" height="16" viewBox="0 0 16 16" stroke="#14162b" stroke-width="1.6" stroke-linecap="round"><path d="M3 3l10 10M13 3L3 13"/></svg></button>
