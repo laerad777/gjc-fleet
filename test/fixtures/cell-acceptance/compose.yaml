@@ -34,7 +34,7 @@ services:
       - {<<: *fixture_bind, source: "${FLEET_FIXTURE_REPO:?}/test/fixtures/coordinator.ts", target: /fleet/test/fixtures/coordinator.ts}
       - {<<: *fixture_bind, source: "${FLEET_FIXTURE_REPO:?}/test/admission-fixture.ts", target: /fleet/test/admission-fixture.ts}
       - {<<: *fixture_bind, source: "${FLEET_CELL_HARNESS_DIR:?}/cell-fixture.ts", target: /harness/cell-fixture.ts}
-      - a:/state
+      - {type: volume, source: a, target: /state}
   b:
     <<: *cell
     command:
@@ -48,7 +48,7 @@ services:
       - {<<: *fixture_bind, source: "${FLEET_FIXTURE_REPO:?}/test/fixtures/coordinator.ts", target: /fleet/test/fixtures/coordinator.ts}
       - {<<: *fixture_bind, source: "${FLEET_FIXTURE_REPO:?}/test/admission-fixture.ts", target: /fleet/test/admission-fixture.ts}
       - {<<: *fixture_bind, source: "${FLEET_CELL_HARNESS_DIR:?}/cell-fixture.ts", target: /harness/cell-fixture.ts}
-      - b:/state
+      - {type: volume, source: b, target: /state}
 networks:
   a: {internal: true}
   b: {internal: true}
