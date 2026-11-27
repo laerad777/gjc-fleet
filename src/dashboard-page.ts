@@ -87,7 +87,7 @@ header .rt .live.off{color:#b42a3a}
 .live.off .dot{background:var(--rose)}.live.off .dot::after{border-color:var(--rose);animation:none}
 .sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
 .fresh{display:none;align-items:center;gap:8px;margin-top:10px;font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:#8a5206}
-.fresh{display:none;align-items:center;gap:8px;margin-top:var(--sp-3);font-size:10.5px;letter-spacing:.14em;text-transform:uppercase;color:#8a5206}
+.fresh{display:none;align-items:center;gap:8px;margin-top:var(--sp-3);font-size:0.6875rem;letter-spacing:.14em;text-transform:uppercase;color:#8a5206}
 .fresh.on{display:flex}
 .fresh b{font-weight:600}
 .fresh span{color:var(--sub);letter-spacing:.06em;text-transform:none;font-size:11.5px;padding-left:8px;border-left:1px solid var(--line)}
@@ -141,7 +141,7 @@ header .rt .live.off{color:#b42a3a}
 /* find node: chip-styled combobox, same tokens as the filter chips */
 #find-node{position:relative}
 #find-node[hidden]{display:none}
-#find-btn{height:var(--ctl-h);padding:0 13px;display:inline-flex;align-items:center;gap:7px;border:1px solid var(--ctl-border);border-radius:var(--ctl-radius);background:var(--ctl-bg);color:var(--sub);font:inherit;font-size:12.5px;font-weight:500;letter-spacing:.01em;cursor:pointer;box-shadow:var(--ctl-shadow);transition:border-color .2s,color .2s}
+#find-btn{height:var(--ctl-h);padding:0 13px;display:inline-flex;align-items:center;gap:7px;border:1px solid var(--ctl-border);border-radius:var(--ctl-radius);background:var(--ctl-bg);color:var(--sub);font:inherit;font-size:0.8125rem;font-weight:500;letter-spacing:.01em;cursor:pointer;box-shadow:var(--ctl-shadow);transition:border-color .2s,color .2s}
 #find-btn:hover{border-color:var(--ac2);color:var(--text)}
 #find-btn:focus-visible{outline:var(--ctl-focus);outline-offset:2px}
 #find-btn svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
@@ -157,7 +157,7 @@ header .rt .live.off{color:#b42a3a}
 #find-list li.none{color:var(--dim);cursor:default}
 #find-list li.none:hover{background:none}
 /* star focus indicator (ported from ha-zigbee-mesh-map's star pill): chip tokens, explicit exit */
-#star-pill{display:inline-flex;align-items:center;gap:7px;height:var(--ctl-h);padding:0 6px 0 13px;border:1px solid var(--ctl-border);border-radius:var(--ctl-radius);background:var(--ctl-bg);box-shadow:var(--ctl-shadow);color:var(--text);font-size:12.5px;font-weight:500;letter-spacing:.01em}
+#star-pill{display:inline-flex;align-items:center;gap:7px;height:var(--ctl-h);padding:0 6px 0 13px;border:1px solid var(--ctl-border);border-radius:var(--ctl-radius);background:var(--ctl-bg);box-shadow:var(--ctl-shadow);color:var(--text);font-size:0.8125rem;font-weight:500;letter-spacing:.01em}
 #star-pill[hidden]{display:none}
 #star-pill .fdot{width:7px;height:7px;border-radius:50%;flex:none}
 #star-pill span{max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -168,7 +168,7 @@ header .rt .live.off{color:#b42a3a}
 #star-x{align-self:stretch}
 /* ---- node filters: calm light chips; dimming never moves the map ---- */
 #fbar{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px;max-width:600px}
-.fchip{appearance:none;border:1px solid var(--line-hi);background:var(--panel-hi);color:var(--sub);font:inherit;font-size:12.5px;font-weight:500;letter-spacing:.01em;border-radius:999px;padding:7px 13px;display:inline-flex;align-items:center;gap:7px;cursor:pointer;box-shadow:0 6px 16px -12px rgba(50,50,150,.35);transition:border-color .2s,color .2s,background .2s,opacity .2s}
+.fchip{appearance:none;border:1px solid var(--line-hi);background:var(--panel-hi);color:var(--sub);font:inherit;font-size:0.8125rem;font-weight:500;letter-spacing:.01em;border-radius:999px;padding:7px 13px;display:inline-flex;align-items:center;gap:7px;cursor:pointer;box-shadow:0 6px 16px -12px rgba(50,50,150,.35);transition:border-color .2s,color .2s,background .2s,opacity .2s}
 .fchip:hover{border-color:var(--ac2);color:var(--text)}
 .fchip:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
 .fchip[aria-pressed="true"]{background:rgba(91,91,240,.1);border-color:var(--ac);color:var(--violet)}
@@ -637,8 +637,8 @@ header .lease{margin-top:5px;padding:6px 8px}
 .lease .lt span{display:none}
 #zc{bottom:12px;right:12px}
 #fbar .fchip{font-size:0;gap:5px;padding:0 14px}
-#fbar .fchip::before{font-size:12.5px;font-weight:500}
-#fbar .fchip b{font-size:12.5px;margin-left:5px}
+#fbar .fchip::before{font-size:0.8125rem;font-weight:500}
+#fbar .fchip b{font-size:0.8125rem;margin-left:5px}
 #fbar .fchip[data-f=down]::before{content:"Down"}
 #fbar .fchip[data-f=attn]::before{content:"Attn"}
 #fbar .fchip[data-f=assigned]::before{content:"Asgd"}
