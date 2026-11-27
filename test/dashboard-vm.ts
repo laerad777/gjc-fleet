@@ -4,7 +4,10 @@ import { renderDashboardHtml, type DashboardState } from "../src/dashboard";
 // Only DOM construction, geometry and browser timing are stubbed. The dashboard's
 // shipped script still receives the real fixture and produces the HTML under test.
 class DashboardElement {
-	innerHTML = "";
+	private html = "";
+	parentNode: DashboardElement | null = null;
+	get innerHTML() { return this.html; }
+	set innerHTML(value: string) { this.html = value; if (value === "") this.children = []; }
 	textContent = "";
 	className = "";
 	lastElementChild = { textContent: "" };
@@ -23,14 +26,22 @@ class DashboardElement {
 	setAttribute(key: string, value: string) { this.attrs.set(key, value); }
 	getAttribute(key: string) { return this.attrs.get(key) ?? null; }
 	removeAttribute(key: string) { this.attrs.delete(key); }
-	addEventListener() {}
+	listeners = new Map<string, (event: unknown) => void>();
+	hidden = false;
+	disabled = false;
+	static focused: DashboardElement | null = null;
+	addEventListener(type: string, handler: (event: unknown) => void) { this.listeners.set(type, handler); }
+	closest() { return this; }
+	focus() { DashboardElement.focused = this; }
 	querySelector() { return null; }
 	querySelectorAll() { return []; }
 	children: unknown[] = [];
-	appendChild(child: unknown) { this.children.push(child); return child; }
+	appendChild(child: unknown) { (child as DashboardElement).parentNode = this; this.children.push(child); return child; }
 	get lastChild() { return this.children[this.children.length - 1]; }
 	remove() {}
 }
+
+export const focusedElement = (): unknown => DashboardElement.focused;
 
 export async function renderDashboardFixture(state: DashboardState) {
 	const elements = new Map<string, DashboardElement>();
