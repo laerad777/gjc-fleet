@@ -172,7 +172,7 @@ jobs:
       - run: bun test test
 
   windows:
-    name: Test (windows-latest, shard ${{ matrix.shard }}/3)
+    name: Test (windows-latest, shard ${{ matrix.shard }}/5)
     needs: changes
     if: ${{ needs.changes.outputs.docs_only == 'false' }}
     runs-on: windows-latest
@@ -180,7 +180,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3]
+        shard: [1, 2, 3, 4, 5]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -190,7 +190,7 @@ jobs:
           bun-version: "1.4.4"
       - run: git --version
       - run: bun install --frozen-lockfile
-      - run: bun test test --shard="${{ matrix.shard }}/3" --parallel=2
+      - run: bun test test --shard="${{ matrix.shard }}/5"
 
   windows_focus:
     name: Windows focus (${{ matrix.case }})
