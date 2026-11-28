@@ -469,9 +469,7 @@ describe("#5 verification conflicts are final, bounded and visible; owner-gone c
 	test("an unleased (older-tree) verify-test claim whose owner is gone becomes visible once; collection stays TEST_UNKNOWN; never rerun", async () => {
 		let now = 0;
 		const f = await verifierFixture({ clock: () => now });
-		// A slow host: fixture setup and the claim may take seconds. The bound is measured from the claim's
-		// recorded time, so the test clock is taken from that record, never from before the setup.
-		await Bun.sleep(1500);
+		// Anchor the injected clock to the claim's recorded time, regardless of fixture setup latency.
 		const claim = f.store.claimOperation(f.task.id, "verify-test", { argv: f.argv("lost") })!;
 		now = Date.parse(f.store.operationClaimedAt(f.task.id, claim.id)!);
 		expect(Number.isFinite(now)).toBe(true);
