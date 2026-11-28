@@ -8,6 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { NodeHealthHistory } from "../src/node-health";
 import { FleetStore } from "../src/store";
+import { sqlitePhaseProfile, unprofiled } from "./fixtures/sqlite-phase-profile";
 
 const S = 1000, M = 60 * S, H = 60 * M, BASE = 1_800_000_000_000;
 const good = { reachable: true, brokerSessionListOk: true, resourceSampleOk: true, latencyMs: 1 };
@@ -57,46 +58,51 @@ test("H1: a long-lived observer every 10 s plus 16 one-shot writers per interval
 	expect(observer.dimensions("n").stable).toBe(false);
 }, 30_000);
 
-test("H1: far more one-shot writers than any retained-chain capacity (40 per interval) cannot starve the observer", () => {
+test("H1: far more one-shot writers than any retained-chain capacity (40 per interval) cannot starve the observer", () => sqlitePhaseProfile("H1_40_writers", phase => {
 	const real = { t: 0 }, p = path();
-	const { h: observer } = proc(p, real);
+	const { h: observer } = phase("observer_open", () => proc(p, real));
 	let first: number | null = null;
 	for (let t = 0; t <= 30 * M && first === null; t += 10 * S) {
-		real.t = t; rec(observer);
-		if (observer.dimensions("n").stable) first = t;
-		for (let j = 1; j <= 40; j++) { real.t = t + j * 200; const o = new NodeHealthHistory(p, {}, { clock: () => BASE + real.t, monotonic: () => real.t }); rec(o); o.close(); }
+		real.t = t; phase("observer_record", () => rec(observer));
+		if (phase("observer_dimensions", () => observer.dimensions("n")).stable) first = t;
+		for (let j = 1; j <= 40; j++) {
+			real.t = t + j * 200;
+			const o = phase("one_shot_open", () => new NodeHealthHistory(p, {}, { clock: () => BASE + real.t, monotonic: () => real.t }));
+			phase("one_shot_record", () => rec(o));
+			phase("one_shot_close", () => o.close());
+		}
 	}
 	expect(first).not.toBeNull();
 	expect(first!).toBeLessThanOrEqual(5 * M);
-}, 30_000);
+}), 30_000);
 
 /** Five minutes of probes every 10 s by process A. */
-function warmUp(p: string, real: { t: number }) {
-	const a = proc(p, real);
-	for (let t = 0; t <= 5 * M; t += 10 * S) { real.t = t; rec(a.h); }
-	expect(a.h.dimensions("n").stable).toBe(true);
+function warmUp(p: string, real: { t: number }, phase = unprofiled) {
+	const a = phase("source_open", () => proc(p, real));
+	for (let t = 0; t <= 5 * M; t += 10 * S) { real.t = t; phase("source_record", () => rec(a.h)); }
+	expect(phase("source_dimensions", () => a.h.dimensions("n")).stable).toBe(true);
 	return a;
 }
 
 // Windows hosted runners need more than the default 5 s for three SQLite copy/warm loops.
-test("M1: a DB copied to a host whose clock is behind by the transfer time is never ahead of the honest copy; admission needs the decision's own probe", () => {
+test("M1: a DB copied to a host whose clock is behind by the transfer time is never ahead of the honest copy; admission needs the decision's own probe", () => sqlitePhaseProfile("M1_database_copy", phase => {
 	for (const gap of [10 * M, H, 24 * H]) {
 		const run = (anomalous: boolean) => {
 			const real = { t: 0 }, p = path();
-			const a = warmUp(p, real);
-			closeOne(a.h);
-			const q = path(); copyFileSync(p, q);
+			const a = warmUp(p, real, phase);
+			phase("source_close", () => closeOne(a.h));
+			const q = path(); phase("file_copy", () => copyFileSync(p, q));
 			real.t += gap;
-			const b = proc(q, real, anomalous ? -gap + 5 * S : 0);
+			const b = phase("destination_open", () => proc(q, real, anomalous ? -gap + 5 * S : 0));
 			const out = [view(b.h)];
 			// Nothing was probed on the new host: no admission without this decision's own probe.
 			expect(b.h.admit("n", false).allowed).toBe(false);
-			for (let i = 0; i < 12; i++) { real.t += 10 * S; rec(b.h); out.push(view(b.h)); }
+			for (let i = 0; i < 12; i++) { real.t += 10 * S; phase("destination_record", () => rec(b.h)); out.push(view(b.h)); }
 			return out;
 		};
 		neverAhead(run(true), run(false));
 	}
-}, 30_000);
+}), 30_000);
 
 test("M1: a new process after an unobserved hour and a backward wall step is never ahead of the honest run", () => {
 	const run = (anomalous: boolean) => {
