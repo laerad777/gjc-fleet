@@ -36,7 +36,10 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const UNCLASSIFIED = DIAGNOSTIC_TEXT.get("unclassified")!;
 
 // ---- sensitive corpus: every class the README must not store -------------------------------
-const local = [hostname(), userInfo().username].filter((value) => value.length >= 3);
+const username = userInfo().username;
+// A fallback "unknown" also appears in valid fixed output, so it cannot identify a leaked username.
+const identityUser = username.toLowerCase() === "unknown" ? "fleet-fixture-local-user-qzv" : username;
+const local = [hostname(), identityUser].filter((value) => value.length >= 3);
 const corpus = {
 	password: "password=hunter2-Pa55w0rd!",
 	token: "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
