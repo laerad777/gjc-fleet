@@ -45,7 +45,7 @@ class DashboardElement {
 export const focusedElement = (): unknown => DashboardElement.focused;
 
 export async function renderDashboardFixture(state: DashboardState, options: {
-	hash?: string; width?: number; height?: number; windowListeners?: DashboardElement["listeners"];
+	deliverState?: (cb: (state: DashboardState) => void) => void; stateNow?: () => DashboardState; pollTimers?: Array<() => void>; hash?: string; width?: number; height?: number; windowListeners?: DashboardElement["listeners"];
 } = {}) {
 	const elements = new Map<string, DashboardElement>();
 	const byId = (id: string) => {
@@ -60,6 +60,7 @@ export async function renderDashboardFixture(state: DashboardState, options: {
 		.transform(new Response(renderDashboardHtml())).text();
 	runInNewContext(script, {
 		document: {
+			get activeElement() { return DashboardElement.focused; },
 			getElementById: byId,
 			createElement: () => new DashboardElement(),
 			createTextNode: (text: string) => { const e = new DashboardElement(); e.textContent = String(text); return e; },
@@ -79,12 +80,17 @@ export async function renderDashboardFixture(state: DashboardState, options: {
 		addEventListener: (type: string, handler: (event: unknown) => void) => options.windowListeners?.set(type, handler),
 		requestAnimationFrame: () => 0,
 		matchMedia: () => ({ matches: true }),
-		fetch: async () => ({ ok: true, json: async () => JSON.parse(JSON.stringify(state)) }),
-		WebSocket: class {},
+		fetch: async () => ({ ok: true, json: async () => JSON.parse(JSON.stringify(options.stateNow?.() ?? state)) }),
+		WebSocket: class {
+			onmessage?: (event: { data: string }) => void;
+			constructor() {
+				options.deliverState?.(state => this.onmessage?.({ data: JSON.stringify({ type: "state", state }) }));
+			}
+		},
 		location: { protocol: "http:", host: "dashboard.invalid", hash: options.hash },
 		setTimeout: () => 0,
 		clearTimeout: () => {},
-		setInterval: () => 0,
+		setInterval: (fn: () => void, delay: number) => { if (delay === 3000) options.pollTimers?.push(fn); return 0; },
 	});
 	await new Promise<void>((resolve) => setImmediate(resolve));
 	return elements;

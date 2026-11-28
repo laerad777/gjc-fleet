@@ -102,3 +102,60 @@ test("phone drags stop with the ends of an oversized grid in the visible map ban
 		rmSync(dir, { recursive: true, force: true });
 	}
 });
+
+for (const hasEnabledAlternative of [false, true]) {
+	test("Live poll hands off focus when its filter loses its last node; alternative=" + hasEnabledAlternative, async () => {
+		const dir = mkdtempSync(join(tmpdir(), "fleet-dashboard-poll-focus-"));
+		const store = new FleetStore(join(dir, "fleet.db"));
+		try {
+			store.putNode(node);
+			const initial = getDashboardState(store);
+			let payload = initial;
+			const timers: Array<() => void> = [];
+			const els = await renderDashboardFixture(initial, { stateNow: () => payload, pollTimers: timers });
+			const chips = els.get("fbar")!.children as Array<Chip & { focus(): void }>;
+			const linux = chips.find(c => c.getAttribute("data-testid") === "filter-linux")!;
+			const mac = chips.find(c => c.getAttribute("data-testid") === "filter-darwin")!;
+			expect(linux.disabled).toBe(false);
+			linux.focus();
+			payload = { ...initial, nodes: hasEnabledAlternative ? initial.nodes.map(n => ({ ...n, os: "darwin" as const })) : [] };
+			timers[0]!();
+			await new Promise<void>(resolve => setImmediate(resolve));
+			expect(linux.disabled).toBe(true);
+			if (hasEnabledAlternative) expect(mac.disabled).toBe(false);
+			expect(focusedElement() === (hasEnabledAlternative ? mac : els.get("stage"))).toBe(true);
+		} finally {
+			store.close();
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+}
+
+for (const route of ["fallback", "alternative", "outside", "selected"]) {
+	test("WebSocket focus: " + route, async () => {
+		const dir = mkdtempSync(join(tmpdir(), "fleet-dashboard-ws-focus-"));
+		const store = new FleetStore(join(dir, "fleet.db"));
+		try {
+			store.putNode(node);
+			const initial = getDashboardState(store);
+			let push: ((state: typeof initial) => void) | undefined;
+			const els = await renderDashboardFixture(initial, { deliverState: cb => { push = cb; } });
+			expect(push).toBeDefined();
+			const bar = els.get("fbar")!;
+			const stage = els.get("stage")!;
+			const chips = bar.children as Array<Chip & { focus(): void }>;
+			const byTest = (id: string) => chips.find(c => c.getAttribute("data-testid") === id)!;
+			const linux = byTest("filter-linux");
+			const next = byTest("filter-darwin");
+			if (route === "selected") bar.listeners.get("click")!({ target: linux });
+			(route === "outside" ? stage : linux).focus();
+			push!({ ...initial, nodes: route === "fallback" ? [] : initial.nodes.map(n => ({ ...n, os: "darwin" as const })) });
+			expect(linux.disabled).toBe(route !== "selected");
+			const expected = route === "alternative" ? next : route === "selected" ? linux : stage;
+			expect(focusedElement() === expected).toBe(true);
+		} finally {
+			store.close();
+			rmSync(dir, { recursive: true, force: true });
+		}
+	});
+}

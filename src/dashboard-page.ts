@@ -1301,14 +1301,18 @@ ${'<div class="grab" id="grab" role="button" tabindex="0" aria-label="Resize det
 	function renderFilters(){
 		var bar=$('fbar');if(!bar||!V)return;
 		if(!fBtns||!fBtns[FACETS[0].key]||fBtns[FACETS[0].key].parentNode!==bar)buildFilters(bar);
+		var focused=document.activeElement,moveFocus=false;
 		FACETS.forEach(function(f){
 			var n=V.nodes.filter(f.test).length,b=fBtns[f.key];
-			b.classList.toggle('zero',!n);b.disabled=!n&&!fOn[f.key];
+			var disabled=!n&&!fOn[f.key];
+			if(disabled&&!b.disabled&&b===focused)moveFocus=true;
+			b.classList.toggle('zero',!n);b.disabled=disabled;
 			b.setAttribute('aria-pressed',fOn[f.key]?'true':'false');
 			b.setAttribute('aria-label',f.label+', '+n+(n===1?' node':' nodes'));
 			b.lastChild.textContent=n;
 		});
 		fClear.hidden=!fltSig();
+		if(moveFocus)focusFirstEnabledFilter();
 	}
 	function applyFilters(){
 		if(!V||!V.units)return;
