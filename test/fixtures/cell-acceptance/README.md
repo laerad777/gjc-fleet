@@ -26,6 +26,36 @@ Image build is a separate provisioning step (Bun 1.4.4 Debian image and OS Git).
 
 A PASS is synthetic same-host cross-container evidence, not a real cross-host/Tailnet, provider, automatic-work, leader-election, authority-fencing or distributed failover test. The driver explicitly submits and starts the new B work; A's daemon does not perform admission and the fixture does not implement scheduling. Do not label wrong-home routing, a stale writer on a separate DB copy, or packet partitions as covered. Those are separate acceptance cases for the relevant implementations.
 
+## Real-node preflight
+
+`preflight-real-node.ts` reads one local JSON file and does not connect to a host.
+It does not replace a real-node run. Passing this check is not evidence that two
+hosts admitted work, opened a database, or failed a peer connection.
+
+```sh
+bun test/fixtures/cell-acceptance/preflight-real-node.ts evidence.json
+```
+
+The file is one object: `runId`, `hosts` (roles `a` and `b`, each with
+`machineId`, `canonicalPath`, `identity.device`, `identity.inode`),
+`productionChecks` (one per host, `checked` and `dbs`), `peerOpen`
+(one each way, `opened: false`, same `runId`), and `restart` for A
+after an exit on the original host and file.
+
+A same machine id fails like this:
+
+```text
+Fleet real-node preflight FAILED: machine ids are the same
+```
+
+`preflight-real-node.ts` reads one local evidence file and does not connect to a host.
+It aborts unless the machine ids differ, each host has one production-DB check
+(an empty list is allowed only when that check was recorded), each test DB's
+host-observed canonical path and file identity are outside that check, each
+direction has one same-run peer observation of the actual target file that failed
+to open, and A's restart record is the same run, the same file, and a start after
+an exit on the original host.
+
 ## Evidence boundary
 
 - Bun 1.4.4: local fixture helper exercised on separate disposable state roots; real B CLI submit/start/poll/result, independent exclusive proof file, reopened DB counts, and A's no-replay check passed. Local helper checks did not run a cross-container outage.
