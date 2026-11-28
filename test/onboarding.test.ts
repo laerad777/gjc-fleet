@@ -1,5 +1,5 @@
 import { test, expect } from "bun:test";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { Database } from "bun:sqlite";
@@ -53,5 +53,15 @@ test("controlled subprocess binds nonce and digest; reachable never proves execu
   expect(await discover(value)).toEqual({ checks: [{ ok: true, code: "transport_reachable", action: "none" }], executionProven: false });
   await writeFile(script, `console.log(JSON.stringify({nonce:'wrong',checks:[]}));`);
   expect((await discover(value)).checks[0]?.code).toBe("discovery_failed");
+ } finally { await rm(dir, { recursive: true, force: true }); }
+});
+test("onboarding preview and enrollment never create a missing inventory database", async () => {
+ const dir = await mkdtemp(join(tmpdir(), "onboarding-missing-db-"));
+ const path = join(dir, "inventory.sqlite");
+ try {
+  for (const enroll of [false, true]) {
+   expect(() => preview(path, registration(), { enroll })).toThrow();
+   expect(await readdir(dir)).toEqual([]);
+  }
  } finally { await rm(dir, { recursive: true, force: true }); }
 });
