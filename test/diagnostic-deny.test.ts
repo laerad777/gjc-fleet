@@ -5,7 +5,7 @@
 // by an own data property `code`; no getter, toString or Proxy trap is ever invoked.
 import { afterEach, describe, expect, test } from "bun:test";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { hostname, tmpdir, userInfo } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { FleetError } from "../src/core";
@@ -36,7 +36,8 @@ const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 const UNCLASSIFIED = DIAGNOSTIC_TEXT.get("unclassified")!;
 
 // ---- sensitive corpus: every class the README must not store -------------------------------
-const local = [hostname(), userInfo().username].filter((value) => value.length >= 3);
+// Fixture-owned, distinctive identities cannot collide with host metadata or allowed output.
+const identitySentinels = ["fleet-fixture-host-qzv.example.invalid", "fleet-fixture-user-qzv"] as const;
 const corpus = {
 	password: "password=hunter2-Pa55w0rd!",
 	token: "ghp_ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
@@ -70,7 +71,7 @@ const corpus = {
 	reviewRefusalAws: "AKIAIOSFODNN7EXAMPLE",
 	reviewRefusalPassword: "password_hunter2_for_alice",
 	reviewErrno: "EAKIAIOSFODNN7EX",
-	localIdentity: local.join(" "),
+	localIdentity: identitySentinels.join(" "),
 } as const;
 // Distinctive fragments that must never appear in a stored diagnostic (or, where base itself stores
 // nothing from the input, anywhere in the database).
@@ -80,11 +81,9 @@ const sentinels = [
 	"home/dave", "build01", "build02", "db7.corp", "example.com", "10.1.2.3", "fe80::", "erin@", "Test User", "wJalrXUtnFEMI",
 	"AWS_SECRET", "aws_secret", "/opt/secretbin", "carol", "9f8e7d6c5b4a3f2e", "deadbeefdeadbeef", "/srv/", "anonymous",
 	"\u202e", "\u001b", "{/home", "-C/home", "|/srv", "apikey", "password_hunter2", "eakiaiosfodnn7", "EAKIAIOSFODNN7",
-	...local,
-	...local.map((value) => value.toLowerCase()),
+	...identitySentinels,
 ];
 const secretValues: string[] = Object.values(corpus);
-const localSentinels = new Set([...local, ...local.map((value) => value.toLowerCase())]);
 
 const step: DiagnosticStep = { source: "Fleet.start.prepare", phase: "call", operationKind: "prepare", operationId: "0f6b5d8e-2c1a-4b7e-9d3f-123456789abc" };
 
@@ -121,10 +120,10 @@ function assertOnlyAllowlisted(diagnostic: unknown) {
 }
 function assertNoSentinel(text: string, database = false) {
 	// Raw SQLite pages naturally contain single control bytes; whole-value checks still cover them.
-	for (const sentinel of sentinels) if (!(database && (localSentinels.has(sentinel) || sentinel.length < 3))) expect(text).not.toContain(sentinel);
-	for (const value of secretValues) if (!(database && value === corpus.localIdentity)) expect(text).not.toContain(value);
+	for (const sentinel of sentinels) if (!(database && sentinel.length < 3)) expect(text).not.toContain(sentinel);
+	for (const value of secretValues) expect(text).not.toContain(value);
 }
-/** Database bytes: base itself stores temp paths (which contain the local user name) in node snapshots. */
+/** Database bytes may also contain base snapshots and ordinary temp paths. */
 function assertDatabaseClean(db: string) {
 	assertNoSentinel(dbBytes(db), true);
 }

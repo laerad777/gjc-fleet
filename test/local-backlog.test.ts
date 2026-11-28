@@ -38,7 +38,7 @@ test("local backlog lists report-*.md under docs/reports and still lists a root 
   await writeFile(join(root, "docs", "reports", "RESULT.md"), "not a report id\n");
   await writeFile(join(root, "docs", "reports", "not-report-abc.md"), "prefix does not count\n");
   await writeFile(join(root, "report-root.md"), "root report\n");
-  const proc = Bun.spawn(["bun", join(import.meta.dir, "../scripts/local-backlog.ts")], {
+  const proc = Bun.spawn([process.execPath, join(import.meta.dir, "../scripts/local-backlog.ts")], {
    cwd: root,
    stdout: "pipe",
    stderr: "pipe",

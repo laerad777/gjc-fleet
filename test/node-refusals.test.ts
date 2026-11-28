@@ -1,7 +1,7 @@
 import { afterEach, expect, test } from "bun:test";
 import { mkdir, mkdtemp, writeFile, rm, symlink, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { repositoryFixture } from "./fixtures/coordinator";
 import {
 	oneShot,
@@ -503,13 +503,17 @@ test("node error log refuses symlinks and stops growing past the size bound", as
 		expect("correlationId" in again ? again.correlationId : undefined).toMatch(/^[a-f0-9-]{36}$/);
 		expect((await stat(logPath)).size).toBe(before);
 
-		// Hardlink: nlink≠1 must refuse (pre-open and post-open fstat).
+		// Hardlink: nlink≠1 must refuse (pre-open and post-open fstat). Use the
+		// log's filesystem because the OS temp directory can be on another mount.
 		await rm(logPath, { force: true });
-		await writeFile(target, "body\n");
+		const hardlinkDir = await mkdtemp(join(dirname(logPath), ".node-log-link-"));
+		dirs.push(hardlinkDir);
+		const hardlinkTarget = join(hardlinkDir, "sink.log");
+		await writeFile(hardlinkTarget, "body\n");
 		const { link } = await import("node:fs/promises");
-		await link(target, logPath);
+		await link(hardlinkTarget, logPath);
 		await expect(appendNodeErrorLog('{"correlationId":"hardlink"}\n')).rejects.toThrow(/unsafe_node_error_log/);
-		expect(await readFile(target, "utf8")).toBe("body\n");
+		expect(await readFile(hardlinkTarget, "utf8")).toBe("body\n");
 		await rm(logPath, { force: true });
 
 		// In-process soft cap: chain serializes so size stays ≤ MAX.

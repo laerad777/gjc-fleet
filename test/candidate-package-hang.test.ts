@@ -10,6 +10,7 @@ import { dirname, join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { MANIFEST_MEMBER, VERSION, packageCandidate, tarHeader, verifyCandidate } from "../scripts/candidate-package";
 import * as cp from "../scripts/candidate-package";
+import { isStrictUnixSocketCi, unixSocketSkipReason } from "./support/unix-socket-capability";
 
 const TOOL = join(import.meta.dir, "../scripts/candidate-package.ts");
 const win = process.platform === "win32";
@@ -50,9 +51,41 @@ async function refusal(p: Promise<unknown>): Promise<string> {
 const mkfifo = (p: string) => expect(Bun.spawnSync(["mkfifo", p]).exitCode).toBe(0);
 async function socketAt(p: string): Promise<Server> {
 	const s = createServer();
-	await new Promise<void>((res) => s.listen(p, res));
+	await new Promise<void>((res, reject) => {
+		s.once("error", reject);
+		s.listen(p, () => { s.removeListener("error", reject); res(); });
+	});
 	return s;
 }
+// Bun's node:net Unix listen error omits errno. Corroborate it independently only
+// on an ordinary local run; CI stays strict and still executes every Unix case.
+async function localUnixSocketUnavailable(): Promise<boolean> {
+	if (win) return false;
+	const ci = isStrictUnixSocketCi(process.env.CI, process.env.GITHUB_ACTIONS);
+	if (ci) return Boolean(await unixSocketSkipReason(ci));
+	const dir = mkdtempSync(join(tmpdir(), "cand-sock-"));
+	const path = join(dir, "s");
+	try {
+		const reason = await unixSocketSkipReason(ci, async () => {
+			const server = await socketAt(path);
+			await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+		}, () => {
+			const node = Bun.which("node");
+			if (!node) return;
+			const probe = Bun.spawnSync([node, "-e", [
+				'const s = require("node:net").createServer();',
+				's.once("error", e => process.stdout.write(e.code || ""));',
+				's.listen(process.argv[1], () => s.close());',
+			].join(" "), path], { timeout: 3000 });
+			return probe.exitCode === 0 ? probe.stdout.toString().trim() : undefined;
+		});
+		if (reason) console.warn(reason);
+		return Boolean(reason);
+	} finally {
+		rmSync(dir, { recursive: true, force: true });
+	}
+}
+const noUnixSockets = await localUnixSocketUnavailable();
 /** Processes whose command line mentions `needle` (the fixture's unique temp path). */
 function processesMentioning(needle: string): string[] {
 	const r = Bun.spawnSync(["ps", "-A", "-o", "pid=,stat=,command="]);
@@ -84,8 +117,8 @@ test("R1: GIT_TIMEOUTS bound every git child (finite, positive, version <= comma
 	expect(Object.isFrozen(cp.GIT_TIMEOUTS)).toBe(true);
 });
 
-test.skipIf(win)("R1: a FIFO or socket at a tracked path is refused as a non-regular file without any git timeout (production bounds)", async () => {
-	for (const make of ["fifo", "socket"] as const) {
+for (const make of ["fifo", "socket"] as const) {
+	test.skipIf(win || (make === "socket" && noUnixSockets))(`R1: a ${make} at a tracked path is refused as a non-regular file without any git timeout (production bounds)`, async () => {
 		const f = fixture();
 		let server: Server | undefined;
 		try {
@@ -100,18 +133,25 @@ test.skipIf(win)("R1: a FIFO or socket at a tracked path is refused as a non-reg
 			server?.close();
 			f.done();
 		}
-	}
-}, 60_000);
+	}, 60_000);
+}
 
-test.skipIf(win)("R1: an untracked socket, a symlink to a FIFO and a tracked file replaced by a symlink to a FIFO are refused, never opened", async () => {
+test.skipIf(win || noUnixSockets)("R1: an untracked socket is refused, never opened", async () => {
 	const f = fixture();
 	let server: Server | undefined;
 	try {
 		server = await socketAt(join(f.root, "s.sock"));
 		expect(await refusal(packageCandidate(f.root, f.out))).toContain("[non-regular-file]");
-		server.close();
-		server = undefined;
-		rmSync(join(f.root, "s.sock"), { force: true });
+		expectNoOutput(f);
+	} finally {
+		server?.close();
+		f.done();
+	}
+}, 60_000);
+
+test.skipIf(win)("R1: FIFO symlinks are refused, never opened", async () => {
+	const f = fixture();
+	try {
 		mkfifo(join(f.dir, "outside-fifo"));
 		symlinkSync(join(f.dir, "outside-fifo"), join(f.root, "link"));
 		expect(await refusal(packageCandidate(f.root, f.out))).toContain("[symlink]");
@@ -121,7 +161,6 @@ test.skipIf(win)("R1: an untracked socket, a symlink to a FIFO and a tracked fil
 		expect(await refusal(packageCandidate(f.root, f.out))).toContain("[symlink]");
 		expectNoOutput(f);
 	} finally {
-		server?.close();
 		f.done();
 	}
 }, 60_000);
@@ -214,8 +253,8 @@ for (const form of ["\\\\.\\pipe\\", "//./pipe/"] as const)
 		}
 	}, 30_000);
 
-test.skipIf(win)("R1: a symlinked or socket .gitignore is refused by git's own warning ([git-stderr]), not a hang", async () => {
-	for (const make of ["symlink-to-fifo", "socket"] as const) {
+for (const make of ["symlink-to-fifo", "socket"] as const) {
+	test.skipIf(win || (make === "socket" && noUnixSockets))(`R1: a ${make} .gitignore is refused by git's own warning ([git-stderr]), not a hang`, async () => {
 		const f = fixture();
 		let server: Server | undefined;
 		try {
@@ -234,8 +273,8 @@ test.skipIf(win)("R1: a symlinked or socket .gitignore is refused by git's own w
 			server?.close();
 			f.done();
 		}
-	}
-}, 60_000);
+	}, 60_000);
+}
 
 test.skipIf(win)("R1: the packager's own opens refuse a FIFO identity file, and verify refuses FIFO / symlink-to-FIFO inputs (no hang)", async () => {
 	const f = fixture();
