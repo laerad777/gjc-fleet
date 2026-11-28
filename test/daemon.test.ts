@@ -518,6 +518,25 @@ test("kill between every pair of writes leaves a consistent store; a restarted d
 	console.log("DAEMON_KILL_POINTS " + JSON.stringify({ kills, commitsOfFullRun: total }));
 }, 600_000);
 
+// Wall time of one full read of every task row: the runner's own cost of touching the fixture database.
+function scanMs(path: string): number {
+	const t0 = performance.now();
+	const db = raw(path);
+	db.query("SELECT sum(length(data)) FROM tasks").get();
+	db.close();
+	return performance.now() - t0;
+}
+// Independent wall clock. A slow scan is recorded as a ratio and must not raise this ceiling.
+const CYCLE_WALL_MS = 2_000;
+function cycleCeilingMs(_scanMs: number): number {
+	return CYCLE_WALL_MS;
+}
+
+test("a slow database scan does not raise the 2s cycle ceiling", () => {
+	expect(cycleCeilingMs(1)).toBe(CYCLE_WALL_MS);
+	expect(cycleCeilingMs(5_000)).toBe(CYCLE_WALL_MS);
+});
+
 test("300 tasks with 8 MB rows: metadata-only scheduling, bounded memory and time", async () => {
 	// Process RSS is the whole bun process. In the suite this file has already run other tests, and
 	// the peak then sits on the 400 MiB line (ubuntu CI: 407.36 and, before the openat commits, 408.03)
@@ -612,11 +631,24 @@ test("300 tasks with 8 MB rows: metadata-only scheduling, bounded memory and tim
 	// The scheduler never materialised a row: Fleet.inspect's own reads are only of observed tasks.
 	for (const id of ids.slice(0, 100)) expect(readIds.has(id)).toBe(false);
 	for (const id of ids.slice(260)) expect(readIds.has(id)).toBe(false);
+	const scanMsMax = scanMs(f.path);
+	const cycleMsMax = Math.max(...cycleTimes);
 	const sortedCycles = [...cycleTimes].sort((a, b) => a - b);
-	const measured = { dbBytes, cycleMsMax: Math.max(...cycleTimes), cycleMsMedian: sortedCycles[2], cycleMs: cycleTimes, allObservedMs, rssBeforeMiB: rssBefore / 2 ** 20, rssPeakDeltaMiB: (rssPeak - rssBefore) / 2 ** 20, observations: [...stats.reads.values()].reduce((a, b) => a + b, 0) };
+	const measured = {
+		dbBytes,
+		cycleMsMax,
+		cycleMsMedian: sortedCycles[2],
+		cycleMs: cycleTimes,
+		scanMsMax,
+		scanRatio: cycleMsMax / scanMsMax,
+		allObservedMs,
+		rssBeforeMiB: rssBefore / 2 ** 20,
+		rssPeakDeltaMiB: (rssPeak - rssBefore) / 2 ** 20,
+		observations: [...stats.reads.values()].reduce((a, b) => a + b, 0),
+	};
 	writeSync(2, "DAEMON_MEASUREMENT " + JSON.stringify(measured) + "\n");
 	expect(stats.maxTaskConcurrency).toBe(1);
-	expect(measured.cycleMsMax).toBeLessThan(2_000);
+	expect(measured.cycleMsMax).toBeLessThan(cycleCeilingMs(scanMsMax));
 	expect(measured.rssPeakDeltaMiB).toBeLessThan(400);
 }, 300_000);
 
