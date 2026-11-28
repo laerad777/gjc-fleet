@@ -1031,8 +1031,11 @@ describe("round-4 review regressions: full Git ignore semantics", () => {
 		expect(result.ignored).toEqual({ count: 1, unlisted: 0, paths: ["debug.log"] });
 		for (const secret of ["NEGATION_debug.log", "NEGATION_b.tmp", "NEGATION_keep.log"]) expect(JSON.stringify(result)).not.toContain(secret);
 		// Git's own decisions, for reference: only keep.log differs (operator rule over in-tree negation).
-		for (const [name, ignored] of [["keep.log", false], ["debug.log", true], ["a.tmp", false], ["b.tmp", true]] as const)
-			expect((await run(["git", "-C", identity.path, "check-ignore", "-q", name], identity.path)).exit).toBe(ignored ? 0 : 1);
+		// Batch the four independent paths in one Git process to avoid paying startup cost four times.
+		const checked = await run(["git", "-C", identity.path, "check-ignore", "-z", "--stdin"], identity.path,
+			undefined, undefined, undefined, undefined, "keep.log\0debug.log\0a.tmp\0b.tmp\0");
+		expect(checked.exit).toBe(0);
+		expect(checked.stdout).toBe("debug.log\0b.tmp\0");
 	});
 	test("nested .gitignore files apply only below their directory", async () => {
 		const f = await fixture();
