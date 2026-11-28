@@ -190,7 +190,7 @@ jobs:
           bun-version: "1.4.4"
       - run: git --version
       - run: bun install --frozen-lockfile
-      - run: bun test test --shard="${{ matrix.shard }}/5"
+      - run: bun run scripts/windows-test-shards.ts "${{ matrix.shard }}"
 
   windows_focus:
     name: Windows focus (${{ matrix.case }})

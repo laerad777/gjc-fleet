@@ -86,8 +86,8 @@ Jobs:
   and the separate `windows` job runs on `windows-latest` as five shards.
   The Ubuntu and macOS jobs run `git --version`, `bun install --frozen-lockfile`, and `bun test test`.
   Each Windows shard runs `git --version` and `bun install --frozen-lockfile`,
-  then `bun test test --shard="${{ matrix.shard }}/5"`. Bun sorts the test files
-  by path and deals them round-robin across the shards, so the shards cover the suite exactly once.
+  then `bun run scripts/windows-test-shards.ts "${{ matrix.shard }}"`. The script checks that each test file
+  is assigned exactly once, then runs that shard serially. New tests are assigned by a stable hash of their path.
 - Separate Windows focus jobs run VHDX cleanup, restart observation, and daemon performance checks in parallel. They report targeted results early; the full Windows suite remains required by the gate.
 - `PR gate` always requires `changes`, `static`, and `security` to pass. For docs-only changes, it requires `docs` to pass and both `test` and `windows` to be skipped. Otherwise, it requires `docs` to be skipped and all three hosted OS suites to pass, including Windows.
 
