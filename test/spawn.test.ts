@@ -383,6 +383,17 @@ test("resolveProgram finds git after an empty entry, a missing directory and a f
 		if (locked) chmodSync(dirname(locked), 0o700);
 	}
 });
+test.skipIf(!chmodEnforced)("a mode 000 PATH directory stays when its name still resolves", () => {
+	const locked = dir("mode-000-entry");
+	chmodSync(locked, 0);
+	process.env.PATH = [locked, gitDir].join(DELIM);
+	try {
+		expect(trustedPathValue().split(DELIM)).toContain(locked);
+		expect(resolveProgram("git")).toBe(realGit);
+	} finally {
+		chmodSync(locked, 0o700);
+	}
+});
 test.skipIf(!chmodEnforced)("trustedPathValue drops a PATH entry the process cannot traverse", () => {
 	const denied = dir("path-value-denied");
 	const locked = join(denied, "locked");
