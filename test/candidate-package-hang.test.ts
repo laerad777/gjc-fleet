@@ -10,6 +10,7 @@ import { dirname, join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { MANIFEST_MEMBER, VERSION, packageCandidate, tarHeader, verifyCandidate } from "../scripts/candidate-package";
 import * as cp from "../scripts/candidate-package";
+import { unixSocketSkipReason } from "./support/unix-socket-capability";
 
 const TOOL = join(import.meta.dir, "../scripts/candidate-package.ts");
 const win = process.platform === "win32";
@@ -59,27 +60,27 @@ async function socketAt(p: string): Promise<Server> {
 // Bun's node:net Unix listen error omits errno. Corroborate it independently only
 // on an ordinary local run; CI stays strict and still executes every Unix case.
 async function localUnixSocketUnavailable(): Promise<boolean> {
-	if (win || process.env.CI || process.env.GITHUB_ACTIONS) return false;
+	if (win) return false;
+	const ci = Boolean(process.env.CI || process.env.GITHUB_ACTIONS);
+	if (ci) return Boolean(await unixSocketSkipReason(ci));
 	const dir = mkdtempSync(join(tmpdir(), "cand-sock-"));
 	const path = join(dir, "s");
 	try {
-		try {
+		const reason = await unixSocketSkipReason(ci, async () => {
 			const server = await socketAt(path);
 			await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
-			return false;
-		} catch (error) {
+		}, () => {
 			const node = Bun.which("node");
-			if (!node) throw error;
+			if (!node) return;
 			const probe = Bun.spawnSync([node, "-e", [
 				'const s = require("node:net").createServer();',
 				's.once("error", e => process.stdout.write(e.code || ""));',
 				's.listen(process.argv[1], () => s.close());',
 			].join(" "), path], { timeout: 3000 });
-			const code = probe.stdout.toString().trim();
-			if (probe.exitCode !== 0 || !["EPERM", "EAFNOSUPPORT", "EPROTONOSUPPORT", "EOPNOTSUPP", "ENOSYS"].includes(code)) throw error;
-			console.warn(`candidate-package: skipping three local Unix socket cases (${code}); FIFO and symlink cases still run`);
-			return true;
-		}
+			return probe.exitCode === 0 ? probe.stdout.toString().trim() : undefined;
+		});
+		if (reason) console.warn(reason);
+		return Boolean(reason);
 	} finally {
 		rmSync(dir, { recursive: true, force: true });
 	}
