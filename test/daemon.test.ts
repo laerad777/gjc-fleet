@@ -526,8 +526,16 @@ function scanMs(path: string): number {
 	db.close();
 	return performance.now() - t0;
 }
-// A cycle may cost at most this many full scans (Linux CI: cycle ~1.4 scans), so the bound follows the runner.
-const CYCLE_SCAN_BUDGET = 3;
+// Independent wall clock. A slow scan is recorded as a ratio and must not raise this ceiling.
+const CYCLE_WALL_MS = 2_000;
+function cycleCeilingMs(_scanMs: number): number {
+	return CYCLE_WALL_MS;
+}
+
+test("a slow database scan does not raise the 2s cycle ceiling", () => {
+	expect(cycleCeilingMs(1)).toBe(CYCLE_WALL_MS);
+	expect(cycleCeilingMs(5_000)).toBe(CYCLE_WALL_MS);
+});
 
 test("300 tasks with 8 MB rows: metadata-only scheduling, bounded memory and time", async () => {
 	// Process RSS is the whole bun process. In the suite this file has already run other tests, and
@@ -625,13 +633,15 @@ test("300 tasks with 8 MB rows: metadata-only scheduling, bounded memory and tim
 	for (const id of ids.slice(0, 100)) expect(readIds.has(id)).toBe(false);
 	for (const id of ids.slice(260)) expect(readIds.has(id)).toBe(false);
 	const scanMsMax = Math.max(scanBeforeMs, scanMs(f.path));
+	const cycleMsMax = Math.max(...cycleTimes);
 	const sortedCycles = [...cycleTimes].sort((a, b) => a - b);
 	const measured = {
 		dbBytes,
-		cycleMsMax: Math.max(...cycleTimes),
+		cycleMsMax,
 		cycleMsMedian: sortedCycles[2],
 		cycleMs: cycleTimes,
 		scanMsMax,
+		scanRatio: cycleMsMax / scanMsMax,
 		allObservedMs,
 		rssBeforeMiB: rssBefore / 2 ** 20,
 		rssPeakDeltaMiB: (rssPeak - rssBefore) / 2 ** 20,
@@ -639,7 +649,7 @@ test("300 tasks with 8 MB rows: metadata-only scheduling, bounded memory and tim
 	};
 	writeSync(2, "DAEMON_MEASUREMENT " + JSON.stringify(measured) + "\n");
 	expect(stats.maxTaskConcurrency).toBe(1);
-	expect(measured.cycleMsMax).toBeLessThan(CYCLE_SCAN_BUDGET * scanMsMax);
+	expect(measured.cycleMsMax).toBeLessThan(cycleCeilingMs(scanMsMax));
 	expect(measured.rssPeakDeltaMiB).toBeLessThan(400);
 }, 300_000);
 
