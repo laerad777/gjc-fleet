@@ -15,7 +15,9 @@ const PENDING_REVIEW = {
 	result: { verified: false, executionTerminal: true, exportIncomplete: { subject: expect.anything(), reviewDigest: expect.stringMatching(/^[a-f0-9]{64}$/), requiredAt: expect.any(String) } },
 };
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
-async function fixture(unknownVerifier = false, collectResult = true, settled: "completed_unverified" | "failed" = "completed_unverified", infoExclude?: string, cleanupList: (() => Promise<void>)[] = cleanups) {
+async function fixture(unknownVerifier = false, collectResult = true,
+	settled: "completed_unverified" | "failed" = "completed_unverified",
+	infoExclude?: string, cleanupList: (() => Promise<void>)[] = cleanups) {
 	const repo = await repositoryFixture("fleet-result-upgrade-");
 	// Operator rules are snapshotted when the workspace is prepared.
 	if (infoExclude !== undefined) {
