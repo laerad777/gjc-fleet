@@ -15,6 +15,7 @@ import { FleetStore } from "../src/store";
 import { getDashboardState, sampleResourcesOnce, startDashboardServer } from "../src/dashboard";
 import { DEFAULT_ADMISSION_POLICY, type ResourceSample } from "../src/admission";
 import { headroom } from "./admission-fixture";
+import { manualHealthTimer } from "./fixtures/manual-health-timer";
 import { access, approval, bad, cleanup, cliPath, clocked, fleetFixture, forbiddenAccess, good, makeStable, runCli, selectionAudit, track } from "./fixtures/node-health";
 
 afterEach(cleanup);
@@ -277,12 +278,18 @@ test("ui --read-only shows node health from a read-only view and never probes or
 	const view = track(new NodeHealthHistory(f.path, {}, { readOnly: true }));
 	expect(() => view.record("A", good)).toThrow("READ_ONLY");
 	expect(() => view.setSelectionGating(true, approval)).toThrow("READ_ONLY");
-	const server = startDashboardServer(readOnlyStore, 0, "127.0.0.1", { healthHistory: view });
+	const timer = manualHealthTimer();
+	let server: ReturnType<typeof startDashboardServer> | undefined;
 	try {
-		await Bun.sleep(1_500);
+		server = startDashboardServer(readOnlyStore, 0, "127.0.0.1", { healthHistory: view });
 		const state: any = await (await fetch(`http://127.0.0.1:${server.port}/api/state`)).json();
 		expect(state.nodes.find((node: any) => node.id === "A").health).toMatchObject({ gating: "enforce", stable: true });
-	} finally { server.stop(true); }
+		// Read-only startup and the live API request must not arm a health producer.
+		expect(timer.delays()).toEqual([]);
+		expect(await timer.tick()).toEqual({ ran: 0, pending: [] });
+	} finally {
+		try { server?.stop(true); } finally { timer.restore(); }
+	}
 	expect(h.observations("A")).toEqual(before);
 	// A database without node-health tables reads as empty and stays untouched.
 	const g = await fleetFixture();

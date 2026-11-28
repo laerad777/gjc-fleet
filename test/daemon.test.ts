@@ -843,7 +843,14 @@ test("F7/M03: a queue pass never measures a node while an observation call on it
 		sampled.push({ start, end: Date.now() });
 		return { ok: false, at: Date.now(), error: "unreachable" };
 	} });
-	await runFor(d, 1_500);
+	const running = d.run();
+	try {
+		// Compare completed spans, not a guessed time window on the host.
+		await until(() => (stats.nodeCalls.get("n1")?.length ?? 0) >= 3 && sampled.length >= 3, 4_000);
+	} finally {
+		d.stop();
+		await running;
+	}
 	const observed = stats.nodeCalls.get("n1")!;
 	expect(observed.length).toBeGreaterThanOrEqual(3);
 	expect(sampled.length).toBeGreaterThanOrEqual(3);
