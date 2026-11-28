@@ -569,38 +569,47 @@ test("review LOW-5: tasks awaiting export review are counted in dashboard summar
 });
 
 // ---- Review fx-bef2673f findings F2 and F5 ----------------------------------
-test("review fx-9abb2530 F5: a legacy not_run result whose workspace predates collection snapshots verifies once with completeness unknown and needs operator acceptance", async () => {
-	const f = await fixture(false, false);
-	const manifest = await legacyManifest(f);
-	// The task as the previous release prepared it: identity and marker without a snapshot.
-	const { collectionSnapshot: _snapshot, ...identity } = f.task.workspace as any;
-	await writeFile(join(identity.path, ".fleet-identity.json"), JSON.stringify(identity), { mode: 0o600 });
-	await writeFile(join(identity.path, "deliverable.txt"), "legacy deliverable");
-	const { Database } = await import("bun:sqlite");
-	const db = new Database(f.db);
-	db.query("UPDATE tasks SET data=json_remove(data,'$.workspace.collectionSnapshot') WHERE id=?").run(f.task.id);
-	db.close();
-	f.reopen();
-	const stored = await (f.fleet as any).node(f.store.task(f.task.id), { action: "collect", identity, tests: [], exportCompleteness: "exclusions-v1" });
-	// The node reports a legacy-v1 manifest: no completeness fields, so completeness is unknown.
-	expect(Object.keys(stored).sort()).toEqual(LEGACY_KEYS);
-	expect(stored.files.map((file: any) => file.path)).toEqual(["deliverable.txt"]);
-	f.store.saveResult(f.task.id, stored);
-	const upgraded = await f.fleet.result(f.task.id, f.argv);
-	expect(upgraded.status).toBe("verified");
-	expect((await readFile(f.counter, "utf8")).split("\n").filter(Boolean)).toHaveLength(1);
-	// Held with the review, not as the claim's receipt, until acceptance (review fx-093cc54b F1).
-	expect(f.store.getOperation(f.task.id, "result-test")!.receipt).toBeUndefined();
-	const held = f.store.getOperation(f.task.id, "result-test")!.held;
-	expect(held).toEqual(expect.objectContaining({ artifactSchema: "legacy-v1", observedExclusions: null }));
-	expect(f.store.task(f.task.id)).toMatchObject(PENDING_REVIEW);
-	const review = (f.fleet as any).exportReview(f.task.id);
-	expect(review).toMatchObject({ completeness: "unknown", exclusions: null });
-	expect((f.fleet as any).acceptIncompleteExport(f.task.id, { operator: "ops", reviewDigest: review.reviewDigest })).toMatchObject({ phase: "succeeded" });
-	expect(f.store.getOperation(f.task.id, "result-test")!.receipt).toEqual(held);
-	expect(await f.fleet.result(f.task.id, f.argv)).toEqual(upgraded);
-	expect((await readFile(f.counter, "utf8")).split("\n").filter(Boolean)).toHaveLength(1);
-	void manifest;
+describe("review fx-9abb2530 F5: a legacy not_run result whose workspace predates collection snapshots verifies once with completeness unknown and needs operator acceptance", () => {
+	const local: (() => Promise<void>)[] = [];
+	let f: Awaited<ReturnType<typeof fixture>>;
+	const setupStepTimeoutMs = 5_000;
+	beforeAll(async () => {
+		f = await fixture(false, false, "completed_unverified", undefined, local);
+	}, setupStepTimeoutMs);
+	beforeAll(async () => {
+		await legacyManifest(f);
+	}, setupStepTimeoutMs);
+	afterAll(async () => { for (const cleanup of local.splice(0).reverse()) await cleanup(); });
+	test("verifies the pre-snapshot workspace and requires acceptance without running again", async () => {
+		// The task as the previous release prepared it: identity and marker without a snapshot.
+		const { collectionSnapshot: _snapshot, ...identity } = f.task.workspace as any;
+		await writeFile(join(identity.path, ".fleet-identity.json"), JSON.stringify(identity), { mode: 0o600 });
+		await writeFile(join(identity.path, "deliverable.txt"), "legacy deliverable");
+		const { Database } = await import("bun:sqlite");
+		const db = new Database(f.db);
+		db.query("UPDATE tasks SET data=json_remove(data,'$.workspace.collectionSnapshot') WHERE id=?").run(f.task.id);
+		db.close();
+		f.reopen();
+		const stored = await (f.fleet as any).node(f.store.task(f.task.id), { action: "collect", identity, tests: [], exportCompleteness: "exclusions-v1" });
+		// The node reports a legacy-v1 manifest: no completeness fields, so completeness is unknown.
+		expect(Object.keys(stored).sort()).toEqual(LEGACY_KEYS);
+		expect(stored.files.map((file: any) => file.path)).toEqual(["deliverable.txt"]);
+		f.store.saveResult(f.task.id, stored);
+		const upgraded = await f.fleet.result(f.task.id, f.argv);
+		expect(upgraded.status).toBe("verified");
+		expect((await readFile(f.counter, "utf8")).split("\n").filter(Boolean)).toHaveLength(1);
+		// Held with the review, not as the claim's receipt, until acceptance (review fx-093cc54b F1).
+		expect(f.store.getOperation(f.task.id, "result-test")!.receipt).toBeUndefined();
+		const held = f.store.getOperation(f.task.id, "result-test")!.held;
+		expect(held).toEqual(expect.objectContaining({ artifactSchema: "legacy-v1", observedExclusions: null }));
+		expect(f.store.task(f.task.id)).toMatchObject(PENDING_REVIEW);
+		const review = (f.fleet as any).exportReview(f.task.id);
+		expect(review).toMatchObject({ completeness: "unknown", exclusions: null });
+		expect((f.fleet as any).acceptIncompleteExport(f.task.id, { operator: "ops", reviewDigest: review.reviewDigest })).toMatchObject({ phase: "succeeded" });
+		expect(f.store.getOperation(f.task.id, "result-test")!.receipt).toEqual(held);
+		expect(await f.fleet.result(f.task.id, f.argv)).toEqual(upgraded);
+		expect((await readFile(f.counter, "utf8")).split("\n").filter(Boolean)).toHaveLength(1);
+	});
 });
 
 test("review fx-093cc54b F3: a legacy not_run result an earlier release collected after a worker commit is verified explicitly (completeness unknown)", async () => {
