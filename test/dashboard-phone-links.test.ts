@@ -16,7 +16,12 @@ function node(id: string): NodeConfig {
 	};
 }
 
-type El = { getAttribute(key: string): string | null; style: { top: string; left: string }; children: El[] };
+type El = {
+	className: string;
+	getAttribute(key: string): string | null;
+	style: { top: string; left: string };
+	children: El[];
+};
 
 function linkPath(els: Map<string, El>, index: number): string {
 	return els.get("lk" + index)?.getAttribute("d") ?? "";
@@ -71,7 +76,10 @@ test("a phone queue keeps its place and the link bus stays below it", async () =
 		expect(pillY).toBeCloseTo(hubY + 150 / 2 * hs + 6, 5);
 		const bus = / V([\d.-]+) /.exec(linkPath(els as Map<string, El>, 0));
 		expect(bus).not.toBeNull();
-		expect(Number(bus![1])).toBeGreaterThan(pillY);
+		const busY = Number(bus![1]);
+		const pillBottom = pillY + 8 + 11 + 8;
+		expect(busY).toBeGreaterThan(pillY);
+		expect(busY).toBeGreaterThanOrEqual(pillBottom);
 	} finally {
 		store.close();
 		rmSync(dir, { recursive: true, force: true });
