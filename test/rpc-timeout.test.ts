@@ -144,7 +144,9 @@ async function sendTimedOut(f: Fx, timeoutMs: number, hangMs: number, measurePro
 		expect(promptClaimedAt).toBeDefined();
 		expect(unknownRecordedAt).toBeDefined();
 		promptElapsed = unknownRecordedAt! - promptClaimedAt!;
-		expect(promptElapsed).toBeGreaterThanOrEqual(timeoutMs);
+		// setTimeout and performance.now() are different clocks. One millisecond of
+		// skew is still the configured limit; the diagnostic keeps that exact value.
+		expect(promptElapsed).toBeGreaterThanOrEqual(timeoutMs - 1);
 	}
 	expect(task).toMatchObject({ phase: "blocked_unknown", reason: "transport_timeout", sessionId: "controlled-session", held: true });
 	expect(task.turnId).toBeUndefined();
