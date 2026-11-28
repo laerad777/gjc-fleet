@@ -291,23 +291,35 @@ describe("deferred release: A-settled reservation is held until B returns it", (
 		expect(dash.pipeline.outcome).toMatchObject({ succeeded: 1, unverified: 0, troubled: 0 });
 	});
 
-	test("mode boundary: only a deferTerminalRelease connection treats a held settled task as settled; a CLI-mode connection still refuses", async () => {
-		const w = await world(olderCompleted, true);
-		await settleByA(w, "ended_without_receipt", true);
-		const late = lateOk(olderCompleted);
-		await w.setTurn(late.turn);
-		await w.setSdk((s) => { s.execution = late.execution; });
-		const cli = new FleetStore(w.dbPath);
-		cleanups.push(() => cli.close());
-		const fleet = new Fleet(cli, { clock: () => T0 + 2 * INTERVAL } as any);
-		expect((await fleet.inspect(w.id)).lateReceipt).toEqual({ checked: false });
-		expect(w.events("refused").map((e) => e.data)).toEqual([expect.objectContaining({ action: "recordLateReceipt", code: "LATE_RECEIPT_STATE" })]);
-		expect(w.task().result!.lateReceipt).toBeUndefined();
-		expect((await w.poll(2 * INTERVAL)).lateReceipt).toEqual({ checked: true, found: true });
-		await expect(fleet.acceptLateReceipt(w.id, { reason: "cli" })).rejects.toThrow("Only a recorded late terminal_ok receipt");
-		expect(w.task()).toMatchObject({ phase: "failed", held: true });
-		expect(await w.fleet.acceptLateReceipt(w.id, { reason: "deferred" })).toMatchObject({ phase: "completed_unverified", held: true });
-		expect(w.released()).toBe(0);
+	describe("mode boundary: only a deferTerminalRelease connection treats a held settled task as settled; a CLI-mode connection still refuses", () => {
+		async function modeWorld() {
+			const w = await world(olderCompleted, true);
+			await settleByA(w, "ended_without_receipt", true);
+			const late = lateOk(olderCompleted);
+			await w.setTurn(late.turn);
+			await w.setSdk((state) => { state.execution = late.execution; });
+			const cli = new FleetStore(w.dbPath);
+			cleanups.push(() => cli.close());
+			const fleet = new Fleet(cli, { clock: () => T0 + 2 * INTERVAL } as any);
+			return { w, fleet };
+		}
+
+		test("CLI observation refuses to record the receipt that deferred observation records", async () => {
+			const { w, fleet } = await modeWorld();
+			expect((await fleet.inspect(w.id)).lateReceipt).toEqual({ checked: false });
+			expect(w.events("refused").map((e) => e.data)).toEqual([expect.objectContaining({ action: "recordLateReceipt", code: "LATE_RECEIPT_STATE" })]);
+			expect(w.task().result!.lateReceipt).toBeUndefined();
+			expect((await w.poll(2 * INTERVAL)).lateReceipt).toEqual({ checked: true, found: true });
+		});
+
+		test("CLI acceptance refuses a recorded receipt that deferred acceptance accepts while held", async () => {
+			const { w, fleet } = await modeWorld();
+			expect((await w.poll(2 * INTERVAL)).lateReceipt).toEqual({ checked: true, found: true });
+			await expect(fleet.acceptLateReceipt(w.id, { reason: "cli" })).rejects.toThrow("Only a recorded late terminal_ok receipt");
+			expect(w.task()).toMatchObject({ phase: "failed", held: true });
+			expect(await w.fleet.acceptLateReceipt(w.id, { reason: "deferred" })).toMatchObject({ phase: "completed_unverified", held: true });
+			expect(w.released()).toBe(0);
+		});
 	});
 
 	test("late observation and a return pass racing on two connections: receipt recorded, session returned, released exactly once", async () => {
