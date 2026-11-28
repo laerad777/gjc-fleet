@@ -4,7 +4,10 @@ import { renderDashboardHtml, type DashboardState } from "../src/dashboard";
 // Only DOM construction, geometry and browser timing are stubbed. The dashboard's
 // shipped script still receives the real fixture and produces the HTML under test.
 class DashboardElement {
-	innerHTML = "";
+	private html = "";
+	parentNode: DashboardElement | null = null;
+	get innerHTML() { return this.html; }
+	set innerHTML(value: string) { this.html = value; if (value === "") this.children = []; }
 	textContent = "";
 	className = "";
 	lastElementChild = { textContent: "" };
@@ -19,20 +22,39 @@ class DashboardElement {
 		},
 	};
 	attrs = new Map<string, string>();
-	style = { setProperty() {} };
+	style = { setProperty() {}, transform: "", top: "", left: "" };
 	setAttribute(key: string, value: string) { this.attrs.set(key, value); }
 	getAttribute(key: string) { return this.attrs.get(key) ?? null; }
+	getBoundingClientRect() { return { height: 0, top: 0 }; }
 	removeAttribute(key: string) { this.attrs.delete(key); }
-	addEventListener() {}
+	listeners = new Map<string, (event: unknown) => void>();
+	onkeydown?: (event: { key: string; preventDefault: () => void }) => void;
+	onclick?: () => void;
+	hidden = false;
+	disabled = false;
+	static focused: DashboardElement | null = null;
+	addEventListener(type: string, handler: (event: unknown) => void) { this.listeners.set(type, handler); }
+	closest() { return this; }
+	focus() { DashboardElement.focused = this; }
 	querySelector() { return null; }
 	querySelectorAll() { return []; }
 	children: unknown[] = [];
-	appendChild(child: unknown) { this.children.push(child); return child; }
+	appendChild(child: unknown) { (child as DashboardElement).parentNode = this; this.children.push(child); return child; }
 	get lastChild() { return this.children[this.children.length - 1]; }
 	remove() {}
 }
 
-export async function renderDashboardFixture(state: DashboardState) {
+export const focusedElement = (): unknown => DashboardElement.focused;
+
+export async function renderDashboardFixture(state: DashboardState, options: {
+	deliverState?: (cb: (state: DashboardState) => void) => void;
+	stateNow?: () => DashboardState;
+	pollTimers?: Array<() => void>;
+	hash?: string;
+	width?: number;
+	height?: number;
+	windowListeners?: DashboardElement["listeners"];
+} = {}) {
 	const elements = new Map<string, DashboardElement>();
 	const byId = (id: string) => {
 		let e = elements.get(id);
@@ -46,26 +68,37 @@ export async function renderDashboardFixture(state: DashboardState) {
 		.transform(new Response(renderDashboardHtml())).text();
 	runInNewContext(script, {
 		document: {
+			get activeElement() { return DashboardElement.focused; },
 			getElementById: byId,
 			createElement: () => new DashboardElement(),
 			createTextNode: (text: string) => { const e = new DashboardElement(); e.textContent = String(text); return e; },
-			querySelector: (selector: string) => selector === "header" ? { offsetHeight: 110 } : new DashboardElement(),
+			querySelector: (selector: string) => {
+				if (selector === "header") return { offsetHeight: 110 };
+				if (selector === ".lg" && options.height) return { getBoundingClientRect: () => ({ height: 20, top: options.height! - 68 }) };
+				return new DashboardElement();
+			},
 			querySelectorAll: () => [],
 			body: new DashboardElement(),
 			documentElement: new DashboardElement(),
 			addEventListener() {},
 		},
-		innerWidth: 1280,
-		innerHeight: 800,
-		addEventListener() {},
+		innerWidth: options.width ?? 1280,
+		innerHeight: options.height ?? 800,
+		getComputedStyle: options.width ? () => ({ display: "block", visibility: "visible", getPropertyValue: () => "" }) : undefined,
+		addEventListener: (type: string, handler: (event: unknown) => void) => options.windowListeners?.set(type, handler),
 		requestAnimationFrame: () => 0,
 		matchMedia: () => ({ matches: true }),
-		fetch: async () => ({ ok: true, json: async () => JSON.parse(JSON.stringify(state)) }),
-		WebSocket: class {},
-		location: { protocol: "http:", host: "dashboard.invalid" },
+		fetch: async () => ({ ok: true, json: async () => JSON.parse(JSON.stringify(options.stateNow?.() ?? state)) }),
+		WebSocket: class {
+			onmessage?: (event: { data: string }) => void;
+			constructor() {
+				options.deliverState?.(state => this.onmessage?.({ data: JSON.stringify({ type: "state", state }) }));
+			}
+		},
+		location: { protocol: "http:", host: "dashboard.invalid", hash: options.hash },
 		setTimeout: () => 0,
 		clearTimeout: () => {},
-		setInterval: () => 0,
+		setInterval: (fn: () => void, delay: number) => { if (delay === 3000) options.pollTimers?.push(fn); return 0; },
 	});
 	await new Promise<void>((resolve) => setImmediate(resolve));
 	return elements;
