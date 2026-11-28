@@ -20,6 +20,7 @@ ${DASHBOARD_FONT_FACE_CSS}
 	/* one link per hub-node pair; its colors, widths and dash patterns live here only */
 	--lk-ok:#17b57e;--lk-wait:#f0a52a;--lk-unk:#b3b7cf;--lk-down:#c3c6da;
 	--lk-w:1.6;--lk-w-hot:2.8;--lk-dash-down:2 7;--lk-dash-go:4 5;--lk-pulse-dur:.9s;
+	--ql-border:1px;--ql-pad-y:8px;--ql-line:14px;
 	/* 4px-base spacing scale; header/map-chrome gaps and margins pick from these tokens. */
 	--sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:20px;--sp-6:24px;
 	--sai-b:env(safe-area-inset-bottom,0px);
@@ -610,8 +611,9 @@ header .lease{margin-top:5px;padding:6px 8px}
 #world.gr .q{display:none}
 #world.gr #links path.fl,#world.gr #links path.draw{display:none}
 /* queue summary: one tappable pill under the hub instead of orbiting markers */
-.ql.pill{pointer-events:auto;cursor:pointer;white-space:nowrap;padding:8px 14px;border-radius:999px;background:var(--panel-hi);
-	border:1px solid var(--line-hi);color:var(--sub);font-size:11px;letter-spacing:.1em;box-shadow:none}
+.ql.pill{pointer-events:auto;cursor:pointer;white-space:nowrap;padding:var(--ql-pad-y) 14px;border-radius:999px;background:var(--panel-hi);
+	border:var(--ql-border) solid var(--line-hi);color:var(--sub);font-size:11px;line-height:var(--ql-line);
+	letter-spacing:.1em;box-shadow:none}
 /* node filter bar: chips wrap to a second row so none is clipped; 44px touch height (labels shortened in <=480px) */
 #fbar{max-width:100%}
 .fchip{min-height:44px;flex:none}
@@ -1344,7 +1346,15 @@ ${'<div class="grab" id="grab" role="button" tabindex="0" aria-label="Resize det
 	function ctrl(i){var p=pos[V.units[i].id],cx=HUBP.x,cy=HUBP.y;if(MOB)return {x:(cx+p.x)/2,y:(cy+p.y)/2};return {x:(cx+p.x)/2,y:(cy+p.y)/2-((p.y>cy)?-30:30)}}
 	function r1(v){return Math.round(v*10)/10}
 	/* The one link of a hub-node pair: the shared hub-to-node curve, trimmed so the stroke starts outside the hub core and ends at the node orb edge. */
+	/* Phone grid: trunk to a bus, then a gutter lane left of the node column, so no link crosses another node. */
+	function gridLinkD(i){
+		var p=pos[V.units[i].id],h=HUBP,g=GRL,row=Math.floor(i/g.cols);
+		var laneX=r1(g.gx+(i%g.cols)*g.cellW-g.gap/2),y0=r1(h.y+52*HS);
+		if(row===0)return 'M'+r1(h.x)+' '+y0+' V'+r1(g.busY)+' H'+r1(p.x)+' V'+r1(p.y-NS/2);
+		return 'M'+r1(h.x)+' '+y0+' V'+r1(g.busY)+' H'+laneX+' V'+r1(p.y)+' H'+r1(p.x-NS/2);
+	}
 	function linkD(i){
+		if(MOB&&GRL)return gridLinkD(i);
 		var p=pos[V.units[i].id],c=ctrl(i),h=HUBP,hubClear=52*HS,nodeR=NS/2;
 		function pt(t){return {x:(1-t)*(1-t)*h.x+2*(1-t)*t*c.x+t*t*p.x,y:(1-t)*(1-t)*h.y+2*(1-t)*t*c.y+t*t*p.y}}
 		var a=0,b=1;
@@ -1652,6 +1662,7 @@ ${'<div class="grab" id="grab" role="button" tabindex="0" aria-label="Resize det
 	}
 	/* ---- phone grid: hub on top, cards in rows; every size is measured, nothing overlaps by construction ---- */
 	function grTok(name,fb){var v=parseFloat(getComputedStyle(stage).getPropertyValue(name));return isFinite(v)?v:fb}
+	var GRL=null;
 	function gridMobile(R){
 		var N=V.units.length,cx=W/2;
 		HS=N>12?.5:N>6?.56:.62;
@@ -1672,12 +1683,20 @@ ${'<div class="grab" id="grab" role="button" tabindex="0" aria-label="Resize det
 		if(N>8)cols=Math.max(2,cols);
 		var gw=cols*cellW-gap,gx=cx-gw/2;
 		var gy=hy+hb/2+(V.queue.length?grTok('--gr-queue-h',34):grTok('--gr-hub-gap',6)+8);
+		var trunkY=hy+52*HS,busY=(trunkY+gy)/2;
+		if(V.queue.length){
+			var pillTop=hy+HUBBOX/2*HS+6,hot=grTok('--lk-w-hot',2.8);
+			var pillBox=grTok('--ql-border',1)*2+grTok('--ql-pad-y',8)*2+grTok('--ql-line',14);
+			busY=pillTop+pillBox+hot;
+			gy=Math.max(gy,busY+hot);
+		}
 		V.units.forEach(function(v,i){
 			var x=gx+(i%cols+.5)*cellW,y=gy+Math.floor(i/cols)*cellH+NS0/2;
 			base[v.id]={x:x,y:y};pos[v.id]={x:x,y:y};DLIM[v.id]=0;
 			var el=NEL[v.id];el.style.left=x+'px';el.style.top=y+'px';
 		});
 		var rows=Math.ceil(N/cols);
+		GRL={gx:gx,cellW:cellW,cols:cols,gap:gap,busY:busY};
 		CB={x0:gx-12,y0:R.y0-4,x1:gx+gw+12,y1:gy+(rows-1)*cellH+cellH-gap+8};
 		var kf=Math.min(1,(R.x1-R.x0)/(CB.x1-CB.x0),(R.y1-R.y0)/(CB.y1-CB.y0));
 		var cmx=(CB.x0+CB.x1)/2,cmy=(CB.y0+CB.y1)/2;
