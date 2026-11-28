@@ -174,6 +174,17 @@ function candidates(program: string): Candidate[] {
 	return found;
 }
 
+/** An entry the process may not traverse holds no runnable program, so it is dropped, not fatal. */
+function isUnreadable(path: string): boolean {
+	try {
+		canonical(path);
+		return false;
+	} catch (error: any) {
+		if (error?.code === "EACCES") return true;
+		throw error;
+	}
+}
+
 export interface TrustContext {
 	/** Working directory the child will get; the parent's cwd when undefined. */
 	cwd?: string;
@@ -227,7 +238,7 @@ export function resolveProgram(program: string, context: TrustContext = {}): str
 export function trustedPathValue(context: TrustContext = {}): string {
 	const untrusted = roots(context.untrusted ?? []);
 	return pathEntries()
-		.filter((e) => !inside(locate(e), untrusted))
+		.filter((e) => !isUnreadable(e) && !inside(locate(e), untrusted))
 		.join(WIN ? ";" : ":");
 }
 
