@@ -513,24 +513,40 @@ describe("a finished turn followed only by non-message entries", () => {
 });
 
 describe("more than the read window after an open parallel batch", () => {
-	test("the pending count is unknown, so the tool limit applies (never a model stall while a tool may run)", async () => {
+	const filler = () => Array.from({ length: 70 }, () => custom());
+
+	test("an open batch stays progressing when the pending tool count is unknown", async () => {
 		const w = world();
-		const filler = Array.from({ length: 70 }, () => custom());
-		// The batch's assistant line lies before the last 64 lines; one result came in after the filler.
 		const open = w.active("window-open");
-		transcript(open.sessionId, [user(), assistant("toolUse", 3), toolResult(0), ...filler, toolResult(1)], 600);
-		const hung = w.active("window-hung");
-		transcript(hung.sessionId, [user(), assistant("toolUse", 3), toolResult(0), ...filler], 2401);
-		// Control: the batch's assistant line inside the window is counted exactly.
-		const counted = w.active("window-counted");
-		transcript(counted.sessionId, [user(), ...filler, assistant("toolUse", 2), toolResult(0), custom()], 600);
+		// The batch starts before the last 64 lines; another result arrives after the filler.
+		transcript(open.sessionId, [user(), assistant("toolUse", 3), toolResult(0), ...filler(), toolResult(1)], 600);
 		await w.fleet.refreshProgress();
-		expect(w.progress(open.id)).toMatchObject({ verdict: "progressing", lastEntryKind: "other", pendingToolsUnknown: true, idleSeconds: 600 });
-		expect(w.progress(hung.id)).toMatchObject({ verdict: "stalled_tool", lastEntryKind: "other", pendingToolsUnknown: true, idleSeconds: 2401 });
-		expect(w.store.events(hung.id).find((e) => e.kind === "progress_stalled")!.data).toMatchObject({ verdict: "stalled_tool", thresholdSeconds: 2400 });
+		expect(w.progress(open.id)).toMatchObject({
+			verdict: "progressing", lastEntryKind: "other", pendingToolsUnknown: true, idleSeconds: 600,
+		});
+		expect(w.kinds(open.id)).toEqual([]);
+	});
+
+	test("an open batch with unknown pending count uses the tool stall limit, not the model limit", async () => {
+		const w = world();
+		const hung = w.active("window-hung");
+		transcript(hung.sessionId, [user(), assistant("toolUse", 3), toolResult(0), ...filler()], 2401);
+		await w.fleet.refreshProgress();
+		expect(w.progress(hung.id)).toMatchObject({
+			verdict: "stalled_tool", lastEntryKind: "other", pendingToolsUnknown: true, idleSeconds: 2401,
+		});
+		expect(w.store.events(hung.id).find((e) => e.kind === "progress_stalled")!.data).toMatchObject({
+			verdict: "stalled_tool", thresholdSeconds: 2400,
+		});
+	});
+
+	test("a batch started inside the read window still has a known pending tool count", async () => {
+		const w = world();
+		const counted = w.active("window-counted");
+		transcript(counted.sessionId, [user(), ...filler(), assistant("toolUse", 2), toolResult(0), custom()], 600);
+		await w.fleet.refreshProgress();
 		expect(w.progress(counted.id)).toMatchObject({ verdict: "progressing", lastEntryKind: "tool_running" });
 		expect(w.progress(counted.id)!.pendingToolsUnknown).toBeUndefined();
-		expect(w.kinds(open.id)).toEqual([]);
 	});
 });
 
@@ -661,15 +677,15 @@ describe("transcript and node failures (verdict unknown with a deny-by-default d
 		expect(w.calls()).toEqual(["progress"]);
 	});
 
-	test("node timeout, output limit, non-zero exit, invalid and truncated replies", async () => {
-		const expected = {
-			timeout: ["call", "TransportError", "transport:progress_timeout"],
-			flood: ["call", "TransportError", "transport:progress_output_limit"],
-			exit: ["call", "TransportError", "transport:progress_exit"],
-			garbage: ["validate", "TransportError", "transport:progress_reply_invalid"],
-			truncated: ["validate", "TransportError", "transport:progress_reply_invalid"],
-		} as const;
-		for (const [mode, [phase, errorClass, code]] of Object.entries(expected)) {
+	const expected = {
+		timeout: ["call", "TransportError", "transport:progress_timeout"],
+		flood: ["call", "TransportError", "transport:progress_output_limit"],
+		exit: ["call", "TransportError", "transport:progress_exit"],
+		garbage: ["validate", "TransportError", "transport:progress_reply_invalid"],
+		truncated: ["validate", "TransportError", "transport:progress_reply_invalid"],
+	} as const;
+	for (const [mode, [phase, errorClass, code]] of Object.entries(expected)) {
+		test(`node ${mode} is unknown with the expected diagnostic and no retry`, async () => {
 			const w = world({ progress: { posixTimeoutMs: 400 } });
 			const a = w.active(`${mode}-a`);
 			const b = w.active(`${mode}-b`);
@@ -687,8 +703,8 @@ describe("transcript and node failures (verdict unknown with a deny-by-default d
 			// Never retried within the interval; one command for both sessions.
 			await w.fleet.refreshProgress();
 			expect(w.calls()).toEqual(["progress"]);
-		}
-	});
+		});
+	}
 
 	test("no registered route: an OS this hub cannot run, a non-ssh foreign route", async () => {
 		const w = world({ nodes: [{ ...node("w1"), os: process.platform === "win32" ? "linux" : "win32", transport: { command: "gjc", args: [] } } as unknown as NodeConfig] });
