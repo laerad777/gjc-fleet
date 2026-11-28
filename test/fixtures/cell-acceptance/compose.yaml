@@ -1,0 +1,57 @@
+x-cell: &cell
+  image: "${FLEET_CELL_IMAGE:?prebuilt nonproduction image required}"
+  working_dir: /fleet
+  user: bun
+  restart: "no"
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: ["no-new-privileges:true"]
+  tmpfs: [/tmp]
+  environment:
+    CELL_ROOT: /state
+    TMPDIR: /state/tmp
+    HOME: /state/home
+    FLEET_FIXTURE_REPO: /fleet
+    GIT_CONFIG_NOSYSTEM: "1"
+  entrypoint: [/bin/sh, -ec]
+x-mounts: &fixture_bind
+  type: bind
+  read_only: true
+  bind:
+    create_host_path: false
+services:
+  a:
+    <<: *cell
+    command:
+      - |
+        test "$$(bun --version)" = 1.4.4
+        bun /harness/cell-fixture.ts init a
+        read -r db </state/database-path
+        exec bun /fleet/src/cli.ts --db "$$db" --local-node-id cell-a daemon run
+    networks: [a]
+    volumes:
+      - {<<: *fixture_bind, source: "${FLEET_FIXTURE_REPO:?}/src", target: /fleet/src}
+      - {<<: *fixture_bind, source: "${FLEET_FIXTURE_REPO:?}/test/fixtures/coordinator.ts", target: /fleet/test/fixtures/coordinator.ts}
+      - {<<: *fixture_bind, source: "${FLEET_FIXTURE_REPO:?}/test/admission-fixture.ts", target: /fleet/test/admission-fixture.ts}
+      - {<<: *fixture_bind, source: "${FLEET_CELL_HARNESS_DIR:?}/cell-fixture.ts", target: /harness/cell-fixture.ts}
+      - {type: volume, source: a, target: /state}
+  b:
+    <<: *cell
+    command:
+      - |
+        test "$$(bun --version)" = 1.4.4
+        bun /harness/cell-fixture.ts init b
+        exec sleep infinity
+    networks: [b]
+    volumes:
+      - {<<: *fixture_bind, source: "${FLEET_FIXTURE_REPO:?}/src", target: /fleet/src}
+      - {<<: *fixture_bind, source: "${FLEET_FIXTURE_REPO:?}/test/fixtures/coordinator.ts", target: /fleet/test/fixtures/coordinator.ts}
+      - {<<: *fixture_bind, source: "${FLEET_FIXTURE_REPO:?}/test/admission-fixture.ts", target: /fleet/test/admission-fixture.ts}
+      - {<<: *fixture_bind, source: "${FLEET_CELL_HARNESS_DIR:?}/cell-fixture.ts", target: /harness/cell-fixture.ts}
+      - {type: volume, source: b, target: /state}
+networks:
+  a: {internal: true}
+  b: {internal: true}
+volumes:
+  a: {}
+  b: {}
