@@ -4,18 +4,20 @@ Test-only lane for the Fleet revision under review. Use a disposable Linux **loc
 
 ## Run on a disposable Linux runner
 
-From this directory in a disposable checkout, set `FLEET_FIXTURE_SHA` to the reviewed commit you intend to test (the PR merge-test SHA for CI parity, if applicable). The checkout must already be verified and clean:
+From the root of the disposable checkout, set `FLEET_FIXTURE_SHA` to the reviewed commit (the PR merge-test SHA for CI parity, if applicable). The source and harness must come from that same clean checkout. Use a local default Docker context; do not set `DOCKER_HOST` or `DOCKER_CONTEXT`.
 
 ```sh
-export FLEET_FIXTURE_REPO=/absolute/path/to/isolated/gjc-fleet
-test -n "$FLEET_FIXTURE_SHA" &&
+export FLEET_FIXTURE_REPO="$(pwd -P)"
+fixture_dir=test/fixtures/cell-acceptance
+test -n "${FLEET_FIXTURE_SHA:-}" &&
+  test -z "${DOCKER_HOST:-}${DOCKER_CONTEXT:-}" &&
   test "$(git -C "$FLEET_FIXTURE_REPO" rev-parse HEAD)" = "$FLEET_FIXTURE_SHA" &&
   test -z "$(git -C "$FLEET_FIXTURE_REPO" status --porcelain)" &&
-  docker --context default build -t fleet-cell-fixture:local ./image &&
-  FLEET_CELL_IMAGE=fleet-cell-fixture:local bash ./run-linux.sh
+  docker --context default build -t fleet-cell-fixture:local "$fixture_dir/image" &&
+  FLEET_CELL_IMAGE=fleet-cell-fixture:local bash "$fixture_dir/run-linux.sh"
 ```
 
-Image build is a separate provisioning step (Bun 1.4.4 Debian image and OS Git). The runner itself requires a local image and rejects a missing container engine instead of skipping. It mounts just the Fleet source tree and two fixture files read-only. Each run creates a fresh randomized Compose project with an internal network and state volume per cell. No image pulls occur during the acceptance run. The runner checks the actual Docker network and mounts and cleans up only its own labeled project. The PASS message is contingent on successful teardown.
+Image build is a separate provisioning step (Bun 1.4.4 Debian image and OS Git). The runner itself requires a local image and rejects a missing container engine instead of skipping. It mounts the Fleet `src/` tree plus `coordinator.ts`, `admission-fixture.ts`, and `cell-fixture.ts` read-only. Each run creates a fresh randomized Compose project with an internal network and state volume per cell. No image pulls occur during the acceptance run. The runner checks the actual Docker network and mounts and cleans up only its own labeled project. The PASS message is contingent on successful teardown.
 
 ## Acceptance sequence
 
