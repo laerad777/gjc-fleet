@@ -10,12 +10,13 @@ import { reservePlacement } from "../src/placement-preflight";
 import { reconsiderQueue, submitPlacement } from "../src/index";
 import { FleetStore } from "../src/store";
 import { Fleet } from "../src/fleet";
-import { getDashboardState, getDashboardTask, startDashboardServer } from "../src/dashboard";
+import { getDashboardState, getDashboardTask, HEALTH_OBSERVE_MS, startDashboardServer } from "../src/dashboard";
 import type { NodeConfig, TaskInput, TaskRecord } from "../src/contracts";
 import type { ResourceSample } from "../src/admission";
 import { headroom } from "./admission-fixture";
 import { repositoryFixture } from "./fixtures/coordinator";
 import { access, forbiddenAccess, runCli } from "./fixtures/node-health";
+import { manualHealthTimer } from "./fixtures/manual-health-timer";
 
 // The node-health operator switch on main cb1b744 (stored in the fleet DB, default off) and the
 // main-only features it meets (queue reconsider, operator run, resource-return node blocks, archive,
@@ -265,10 +266,12 @@ test("ui hub producer: one history records real probes of every enabled node, th
 	f.store.putNode({ ...(await f.node("OFF")), enabled: false });
 	// The producer runs only while the stored switch is on (review 17580fae F1/F2).
 	h.setSelectionGating(true, approval);
-	const server = startDashboardServer(f.store, 0, "127.0.0.1", { healthHistory: h });
+	const timer = manualHealthTimer();
+	let server: ReturnType<typeof startDashboardServer> | undefined;
 	try {
-		const deadline = Date.now() + 30_000;
-		while (h.observations("A").length === 0 && Date.now() < deadline) await Bun.sleep(100);
+		server = startDashboardServer(f.store, 0, "127.0.0.1", { healthHistory: h });
+		expect(timer.delays()).toEqual([0]);
+		expect(await timer.tick()).toEqual({ ran: 1, pending: [HEALTH_OBSERVE_MS] });
 		const [first] = h.observations("A");
 		expect(first).toMatchObject({ reachable: true, brokerSessionListOk: true });
 		expect(h.observations("OFF")).toHaveLength(0);
@@ -280,10 +283,15 @@ test("ui hub producer: one history records real probes of every enabled node, th
 		const dims = h.dimensions("A");
 		expect(state.nodes.find((node: any) => node.id === "A").health).toMatchObject({ gating: "enforce", stable: dims.stable, failingDimensions: dims.failingDimensions, consecutiveGood: dims.consecutiveGood, required: dims.required });
 		expect(state.nodes.find((node: any) => node.id === "OFF").health).toMatchObject({ failingDimensions: ["no_history"] });
-	} finally { server.stop(true); }
-	const recorded = h.observations("A").length;
-	await Bun.sleep(1_000);
-	expect(h.observations("A")).toHaveLength(recorded);
+		server.stop(true);
+		server = undefined;
+		const recorded = h.observations("A").length;
+		// This previously armed callback must be cancelled, not merely delayed until later.
+		expect(await timer.tick()).toEqual({ ran: 0, pending: [] });
+		expect(h.observations("A")).toHaveLength(recorded);
+	} finally {
+		try { server?.stop(true); } finally { timer.restore(); }
+	}
 }, 60_000);
 
 test("archive keeps the node_health_warning audit and the history; archiving records no probe", async () => {

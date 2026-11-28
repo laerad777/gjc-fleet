@@ -1795,21 +1795,52 @@ test("concurrency: four concurrent switches record it exactly once without a ste
 	store.close();
 	expect(fenceOf(path)).toEqual(unfenced);
 	const storeModule = new URL("../src/store.ts", import.meta.url).href;
-	const spawnAll = async (barrier: string, scripts: string[]) => {
-		const prelude = `const { FleetStore } = await import(${JSON.stringify(storeModule)}); const { existsSync } = await import("node:fs"); while (!existsSync(${JSON.stringify(barrier)})) await Bun.sleep(5); const s = new FleetStore(process.argv[1]);`;
-		const children = scripts.map((script) => Bun.spawn([process.execPath, "-e", `${prelude} ${script}`, path], { stdout: "pipe", stderr: "pipe" }));
-		await Bun.sleep(300);
-		writeFileSync(barrier, "");
-		const out: string[] = [];
-		for (const child of children) {
-			const [stdout, stderr, exit] = await Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]);
-			expect(stderr).toBe("");
-			expect(exit).toBe(0);
-			out.push(stdout);
+	const spawnAll = async (scripts: string[]) => {
+		const prelude = `const { FleetStore } = await import(${JSON.stringify(storeModule)});
+			await new Promise(resolve => {
+				process.once("message", resolve);
+				process.send("ready");
+			});
+			process.disconnect();
+			const s = new FleetStore(process.argv[1]);`;
+		const children: {
+			child: Bun.Subprocess<"ignore", "pipe", "pipe">;
+			ready: Promise<void>;
+			output: Promise<[string, string, number]>;
+		}[] = [];
+		let timeout: ReturnType<typeof setTimeout> | undefined;
+		try {
+			for (const script of scripts) {
+				const ready = Promise.withResolvers<void>();
+				const child = Bun.spawn([process.execPath, "-e", `${prelude} ${script}`, path], {
+					stdout: "pipe", stderr: "pipe",
+					ipc(message) { if (message === "ready") ready.resolve(); },
+				});
+				children.push({
+					child,
+					ready: Promise.race([ready.promise, child.exited.then(() => { throw new Error("store_child_exited_before_ready"); })]),
+					output: Promise.all([new Response(child.stdout).text(), new Response(child.stderr).text(), child.exited]),
+				});
+			}
+			await Promise.race([
+				Promise.all(children.map(({ ready }) => ready)),
+				new Promise<never>((_, reject) => {
+					timeout = setTimeout(() => reject(new Error("store_children_ready_timeout")), 10_000);
+				}),
+			]);
+			for (const { child } of children) child.send("go");
+			return (await Promise.all(children.map(({ output }) => output))).map(([stdout, stderr, exit]) => {
+				expect(stderr).toBe("");
+				expect(exit).toBe(0);
+				return stdout;
+			});
+		} finally {
+			if (timeout !== undefined) clearTimeout(timeout);
+			for (const { child } of children) if (child.exitCode === null) child.kill();
+			await Promise.allSettled(children.flatMap(({ ready, output }) => [ready, output]));
 		}
-		return out;
 	};
-	const switches = await spawnAll(join(dir, "go-switch"), [0, 1, 2, 3].map((i) => `console.log(JSON.stringify(s.enableResultStore({ actor: "op${i}", reason: "race" }))); s.close();`));
+	const switches = await spawnAll([0, 1, 2, 3].map((i) => `console.log(JSON.stringify(s.enableResultStore({ actor: "op${i}", reason: "race" }))); s.close();`));
 	expect(switches.map((line) => JSON.parse(line).changed).filter(Boolean).length).toBe(1);
 	expect(fenceOf(path)).toEqual(armed);
 	const audit = new Database(path, { readonly: true });
@@ -1818,7 +1849,7 @@ test("concurrency: four concurrent switches record it exactly once without a ste
 	} finally {
 		audit.close();
 	}
-	const work = await spawnAll(join(dir, "go-work"), [
+	const work = await spawnAll([
 		...ids.map((id, i) => `s.saveResult(${JSON.stringify(id)}, { patch: ${JSON.stringify(`+${i}\n`.repeat(3000))} }); s.close(); console.log("ok");`),
 		...[0, 1].map(() => `console.log(JSON.stringify(s.migrateResults(true))); s.close();`),
 	]);

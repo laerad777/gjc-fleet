@@ -11,6 +11,7 @@ import { fileURLToPath } from "node:url";
 import { NodeHealthHistory } from "../src/node-health";
 import { getDashboardState, startDashboardServer, HEALTH_OBSERVE_MS } from "../src/dashboard";
 import type { NodeConfig } from "../src/contracts";
+import { manualHealthTimer } from "./fixtures/manual-health-timer";
 import { approval, bad, cleanup, clocked, fleetFixture, makeStable, runCli, track } from "./fixtures/node-health";
 
 setDefaultTimeout(180_000);
@@ -39,9 +40,14 @@ function snapshot(path: string): string {
 	}
 }
 
-/** A real `ui` process of the tree at `root` (writable, probing), left running for `ms`, then stopped. */
-async function ui(root: string, db: string, ms: number) {
-	const child = Bun.spawn([process.execPath, join(root, "src/cli.ts"), "--db", db, "ui", "--port", "0"], { stdout: "pipe", stderr: "pipe", env: { ...process.env, GJC_SDK_BROKER_AUTOSTART: "0" } });
+/** A real writable `ui` process; the preload makes its health timer manually step-able. */
+async function ui(root: string, db: string) {
+	const preload = fileURLToPath(new URL("./fixtures/health-ui-preload.ts", import.meta.url));
+	let reply: ((message: unknown) => void) | undefined;
+	const child = Bun.spawn([process.execPath, "--preload", preload, join(root, "src/cli.ts"), "--db", db, "ui", "--port", "0"], {
+		stdout: "pipe", stderr: "pipe", ipc(message) { reply?.(message); },
+		env: { ...process.env, GJC_SDK_BROKER_AUTOSTART: "0" },
+	});
 	let stderr = "";
 	const stderrDone = (async () => { for await (const chunk of child.stderr) stderr += new TextDecoder().decode(chunk); })();
 	try {
@@ -49,7 +55,23 @@ async function ui(root: string, db: string, ms: number) {
 		const first = new TextDecoder().decode((await reader.read()).value);
 		reader.releaseLock();
 		expect(JSON.parse(first.split("\n")[0]!)).toMatchObject({ ok: true });
-		await Bun.sleep(ms);
+		for (let i = 0; i < 3; i++) {
+			let timeout: ReturnType<typeof setTimeout> | undefined;
+			try {
+				const response = new Promise<unknown>((resolve, reject) => {
+					reply = resolve;
+					timeout = setTimeout(() => reject(new Error("health_test_tick_timeout")), 10_000);
+				});
+				child.send("health-test-tick");
+				expect(await Promise.race([
+					response,
+					child.exited.then(() => { throw new Error("health_test_ui_exited"); }),
+				])).toEqual({ ran: 0, pending: [] });
+			} finally {
+				if (timeout !== undefined) clearTimeout(timeout);
+				reply = undefined;
+			}
+		}
 	} finally {
 		child.kill("SIGTERM");
 		const exited = await Promise.race([
@@ -79,9 +101,8 @@ test("F1/F2: switch off, a writable ui running several producer ticks leaves sch
 		const db = new Database(baseDb);
 		try { db.query("UPDATE nodes SET data = replace(data, ?, ?)").run(JSON.stringify(log).slice(1, -1), JSON.stringify(baseLog).slice(1, -1)); } finally { db.close(); }
 	}
-	// Two producer periods after the first tick, which runs at once: three ticks of the round-2 producer.
-	const ms = 2 * HEALTH_OBSERVE_MS + 5_000;
-	const [run, baseRun] = await Promise.all([ui(patched, f.path, ms), base ? ui(base, baseDb, ms) : undefined]);
+	// Three acknowledged scheduler turns make absence of work explicit, rather than inferred from elapsed time.
+	const [run, baseRun] = await Promise.all([ui(patched, f.path), base ? ui(base, baseDb) : undefined]);
 	expect(run.stderr).not.toContain("node_health_observe_failed");
 	const after = snapshot(f.path);
 	expect(after).toBe(before);
@@ -100,22 +121,25 @@ test("F2: a producer started with the switch on stops probing and recording once
 	f.store.putNode(logged(await f.node("A"), log));
 	const h = track(new NodeHealthHistory(f.path));
 	h.setSelectionGating(true, approval);
-	const server = startDashboardServer(f.store, 0, "127.0.0.1", { healthHistory: h });
+	const timer = manualHealthTimer();
+	let server: ReturnType<typeof startDashboardServer> | undefined;
 	try {
-		const deadline = Date.now() + 30_000;
-		while (h.observations("A").length === 0 && Date.now() < deadline) await Bun.sleep(100);
+		server = startDashboardServer(f.store, 0, "127.0.0.1", { healthHistory: h });
+		expect(timer.delays()).toEqual([0]);
+		expect(await timer.tick()).toEqual({ ran: 1, pending: [HEALTH_OBSERVE_MS] });
 		expect(h.observations("A")).toHaveLength(1);
 		expect(calls(log).length).toBeGreaterThan(0);
 		const approvalFile = join(f.dir, "off.json");
 		writeFileSync(approvalFile, JSON.stringify({ operator: "ops", reason: "switched off elsewhere" }));
 		expect((await runCli(f.path, "node-health", "gating", "off", approvalFile)).exit).toBe(0);
-		await Bun.sleep(1_000);
 		const recorded = h.observations("A").length, called = calls(log).length;
-		// Past the next producer tick: it reads the switch off, so nothing is probed, recorded or rescheduled.
-		await Bun.sleep(HEALTH_OBSERVE_MS + 5_000);
+		// Complete the already-armed callback: it sees the switch off and does not reschedule.
+		expect(await timer.tick()).toEqual({ ran: 1, pending: [] });
 		expect(h.observations("A")).toHaveLength(recorded);
 		expect(calls(log)).toHaveLength(called);
-	} finally { server.stop(true); }
+	} finally {
+		try { server?.stop(true); } finally { timer.restore(); }
+	}
 }, 180_000);
 
 /** A real `ui --no-probe` of the tree at `root`: its /api/state once, then stopped. */

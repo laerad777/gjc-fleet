@@ -1,9 +1,10 @@
 // Review caba7bbd fixes: H1 (switch off never perturbs scheduling, also with a slow Broker), M1 (the
 // moment of switching on), L1 (health errors never abort a decision), L2 (evidence stamped on
 // receipt), the operator `run` path and the read-only health view. Real child probes and SQLite.
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
 import { Database } from "bun:sqlite";
-import { writeFileSync } from "node:fs";
+import { existsSync, writeFileSync } from "node:fs";
+import { rm } from "node:fs/promises";
 import { join } from "node:path";
 import { NodeHealthHistory } from "../src/node-health";
 import { gatingPreview } from "../src/node-health-gate";
@@ -15,6 +16,7 @@ import { FleetStore } from "../src/store";
 import { getDashboardState, sampleResourcesOnce, startDashboardServer } from "../src/dashboard";
 import { DEFAULT_ADMISSION_POLICY, type ResourceSample } from "../src/admission";
 import { headroom } from "./admission-fixture";
+import { manualHealthTimer } from "./fixtures/manual-health-timer";
 import { access, approval, bad, cleanup, cliPath, clocked, fleetFixture, forbiddenAccess, good, makeStable, runCli, selectionAudit, track } from "./fixtures/node-health";
 
 afterEach(cleanup);
@@ -44,7 +46,9 @@ test("H1: a slow Broker never changes a switch-off decision (one and two nodes);
 
 test("H1, switch on: the decision probes run before the samples are measured, so a slow Broker does not expire them", async () => {
 	const f = await fleetFixture();
-	f.store.putNode(await f.node("A", { broker: "ok,slow=6000" }));
+	const gate = join(f.dir, "admission-broker");
+	const ready = gate + ".ready", release = gate + ".release", answer = gate + ".answer";
+	f.store.putNode(await f.node("A", { broker: `ok,hold=${gate}` }));
 	f.store.putNode(await f.node("B"));
 	const start = Date.now();
 	const clock = { now: start };
@@ -56,18 +60,53 @@ test("H1, switch on: the decision probes run before the samples are measured, so
 	h.setSelectionGating(true, approval);
 	// Fresh samples are measured after the probes (as the CLI does): both nodes stay admissible.
 	const measured = () => ({ samples: new Map([...headroom(["A", "B"], 10).samples].map(([id, s]) => [id, { ...s, at: Date.now() }])) });
-	const fresh = await submitPlacement(new Fleet(f.store), { ...f.input, key: "fresh" }, headroom(["A", "B"], 10), {
-		nodeHealth: { history: () => h, sample: async stamp => { const { samples } = measured(); for (const [id, s] of samples) stamp(id, s); return samples; } },
-	});
-	expect(fresh.task.attemptId).toBeTruthy();
-	expect(fresh.report.nodes.every(row => row.checks.resources.ok)).toBe(true);
-	expect((fresh as any).health).toEqual({ mode: "enforce", decisions: [{ nodeId: "A", pinned: false, allowed: true, failingDimensions: [] }, { nodeId: "B", pinned: false, allowed: true, failingDimensions: [] }] });
-	// Without a fresh measurement the caller's 10 s old samples age by the probe time: the documented
-	// fail-closed cost of deciding on stale input (resources_unknown), never an unsafe placement.
-	clock.now += 30_000;
-	const stale = await submitPlacement(new Fleet(f.store), { ...f.input, key: "stale" }, headroom(["A", "B"], 10), { nodeHealth: { history: () => h } });
-	expect(stale.task.attemptId).toBeUndefined();
-	expect(JSON.stringify(selectionAudit(f.store, stale.task.id))).toContain("resources");
+	const realNow = Date.now.bind(Date);
+	let wallOffset = 0;
+	const wall = spyOn(Date, "now").mockImplementation(() => realNow() + wallOffset);
+	async function duringBroker<T>(begin: () => Promise<T>, whileHeld?: () => void): Promise<T> {
+		for (const marker of [ready, release, answer]) await rm(marker, { force: true });
+		const decision = begin();
+		let settled = false;
+		void decision.then(() => { settled = true; }, () => { settled = true; });
+		try {
+			const deadline = performance.now() + 5_000;
+			while (!(await Bun.file(ready).exists())) {
+				if (settled || performance.now() >= deadline) throw new Error("decision did not reach the held broker");
+				await Bun.sleep(5);
+			}
+			whileHeld?.();
+			// Move the wall clock while the real Broker response is held. A 10s-old resource sample
+			// crosses the real 15s admission boundary, without waiting 6s on every fixture run.
+			wallOffset += 6_000;
+		} finally {
+			await Bun.write(release, "");
+			await decision; // do not leave probes using the fixture after timeout or assertion failure
+		}
+		return decision;
+	}
+	try {
+		let sampleCalls = 0;
+		const fresh = await duringBroker(() => submitPlacement(new Fleet(f.store), { ...f.input, key: "fresh" }, headroom(["A", "B"], 10), {
+			nodeHealth: { history: () => h, sample: async stamp => {
+				sampleCalls++;
+				expect(existsSync(answer)).toBe(true);
+				const { samples } = measured();
+				for (const [id, s] of samples) stamp(id, s);
+				return samples;
+			} },
+		}), () => expect(sampleCalls).toBe(0));
+		expect(sampleCalls).toBe(1);
+		expect(fresh.task.attemptId).toBeTruthy();
+		expect(fresh.report.nodes.every(row => row.checks.resources.ok)).toBe(true);
+		expect((fresh as any).health).toEqual({ mode: "enforce", decisions: [{ nodeId: "A", pinned: false, allowed: true, failingDimensions: [] }, { nodeId: "B", pinned: false, allowed: true, failingDimensions: [] }] });
+		// Without a fresh measurement the caller's 10 s old samples age by the probe time: the documented
+		// fail-closed cost of deciding on stale input, never an unsafe placement.
+		clock.now += 30_000;
+		const stale = await duringBroker(() => submitPlacement(new Fleet(f.store), { ...f.input, key: "stale" }, headroom(["A", "B"], 10), { nodeHealth: { history: () => h } }));
+		expect(stale.task.attemptId).toBeUndefined();
+		expect(stale.report.nodes.map(row => row.checks.resources.code)).toEqual(["resources_stale", "resources_stale"]);
+		expect(JSON.stringify(selectionAudit(f.store, stale.task.id))).toContain("resources");
+	} finally { wall.mockRestore(); }
 }, 60_000);
 
 test("M1: the moment of switching on with little history: who is excluded, what the operator sees, pinned dispatch still works", async () => {
@@ -277,12 +316,18 @@ test("ui --read-only shows node health from a read-only view and never probes or
 	const view = track(new NodeHealthHistory(f.path, {}, { readOnly: true }));
 	expect(() => view.record("A", good)).toThrow("READ_ONLY");
 	expect(() => view.setSelectionGating(true, approval)).toThrow("READ_ONLY");
-	const server = startDashboardServer(readOnlyStore, 0, "127.0.0.1", { healthHistory: view });
+	const timer = manualHealthTimer();
+	let server: ReturnType<typeof startDashboardServer> | undefined;
 	try {
-		await Bun.sleep(1_500);
+		server = startDashboardServer(readOnlyStore, 0, "127.0.0.1", { healthHistory: view });
 		const state: any = await (await fetch(`http://127.0.0.1:${server.port}/api/state`)).json();
 		expect(state.nodes.find((node: any) => node.id === "A").health).toMatchObject({ gating: "enforce", stable: true });
-	} finally { server.stop(true); }
+		// Read-only startup and the live API request must not arm a health producer.
+		expect(timer.delays()).toEqual([]);
+		expect(await timer.tick()).toEqual({ ran: 0, pending: [] });
+	} finally {
+		try { server?.stop(true); } finally { timer.restore(); }
+	}
 	expect(h.observations("A")).toEqual(before);
 	// A database without node-health tables reads as empty and stays untouched.
 	const g = await fleetFixture();

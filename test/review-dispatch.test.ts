@@ -291,7 +291,16 @@ test("childCustody end to end: daemon collects the review child's REVIEW.md on a
  expect(f.store.task(kid.id)!.result?.executionTerminal).toBe(true);
  await writeFile(join(identity.path,"REVIEW.md"),"VERDICT: CLEAN\n");
  await writeFile(join(identity.path,"scratch.txt"),"not collected\n");
- await run(f.daemon(),1500);
+ const daemon=f.daemon();
+ const running=daemon.run();
+ try {
+  // The return operation can only confirm after custody; wait for that durable chain.
+  const deadline=performance.now()+10_000;
+  while (f.store.getOperation(kid.id,"auto-custody")?.receipt===undefined || !f.store.getOperation(kid.id,"resource-return-confirmed")) {
+   if(performance.now()>=deadline) throw new Error("review child custody and return did not complete");
+   await Bun.sleep(10);
+  }
+ } finally {daemon.stop();await running;}
  const done=f.store.task(kid.id)!;
  expect((done.resultManifest as any)?.files?.map((x:any)=>x.path)).toEqual(["REVIEW.md"]);
  expect(f.store.getOperation(kid.id,"auto-custody")?.receipt).toBeDefined();
