@@ -586,7 +586,6 @@ test("300 tasks with 8 MB rows: metadata-only scheduling, bounded memory and tim
 	expect(ids).toHaveLength(300);
 	const dbBytes = statSync(f.path).size;
 	expect(dbBytes).toBeLessThan(1.05 * 1024 ** 3);
-	const scanBeforeMs = scanMs(f.path);
 	const stats = fakeCoordinator(f.fleet, () => 2);
 	// Record only the ids passed to store.task. A spy would also keep every returned task, and the
 	// observed 8 MB rows would stay reachable until the test ends, inflating the RSS peak.
@@ -632,7 +631,7 @@ test("300 tasks with 8 MB rows: metadata-only scheduling, bounded memory and tim
 	// The scheduler never materialised a row: Fleet.inspect's own reads are only of observed tasks.
 	for (const id of ids.slice(0, 100)) expect(readIds.has(id)).toBe(false);
 	for (const id of ids.slice(260)) expect(readIds.has(id)).toBe(false);
-	const scanMsMax = Math.max(scanBeforeMs, scanMs(f.path));
+	const scanMsMax = scanMs(f.path);
 	const cycleMsMax = Math.max(...cycleTimes);
 	const sortedCycles = [...cycleTimes].sort((a, b) => a - b);
 	const measured = {
