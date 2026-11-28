@@ -670,7 +670,10 @@ describe("transcript and node failures (verdict unknown with a deny-by-default d
 			truncated: ["validate", "TransportError", "transport:progress_reply_invalid"],
 		} as const;
 		for (const [mode, [phase, errorClass, code]] of Object.entries(expected)) {
-			const w = world({ progress: { posixTimeoutMs: 400 } });
+			// Only the deliberately blocked POSIX stand-in needs a shorter wait.
+			// Keep the existing Windows startup allowance and non-timeout deadlines.
+			const posixTimeoutMs = mode === "timeout" && !WIN ? 150 : 400;
+			const w = world({ progress: { posixTimeoutMs } });
 			const a = w.active(`${mode}-a`);
 			const b = w.active(`${mode}-b`);
 			transcript(a.sessionId, [user()], 10);
