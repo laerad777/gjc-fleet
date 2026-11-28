@@ -10,7 +10,7 @@ import { dirname, join } from "node:path";
 import { gzipSync } from "node:zlib";
 import { MANIFEST_MEMBER, VERSION, packageCandidate, tarHeader, verifyCandidate } from "../scripts/candidate-package";
 import * as cp from "../scripts/candidate-package";
-import { unixSocketSkipReason } from "./support/unix-socket-capability";
+import { isStrictUnixSocketCi, unixSocketSkipReason } from "./support/unix-socket-capability";
 
 const TOOL = join(import.meta.dir, "../scripts/candidate-package.ts");
 const win = process.platform === "win32";
@@ -61,7 +61,7 @@ async function socketAt(p: string): Promise<Server> {
 // on an ordinary local run; CI stays strict and still executes every Unix case.
 async function localUnixSocketUnavailable(): Promise<boolean> {
 	if (win) return false;
-	const ci = Boolean(process.env.CI || process.env.GITHUB_ACTIONS);
+	const ci = isStrictUnixSocketCi(process.env.CI, process.env.GITHUB_ACTIONS);
 	if (ci) return Boolean(await unixSocketSkipReason(ci));
 	const dir = mkdtempSync(join(tmpdir(), "cand-sock-"));
 	const path = join(dir, "s");

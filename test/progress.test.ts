@@ -661,19 +661,16 @@ describe("transcript and node failures (verdict unknown with a deny-by-default d
 		expect(w.calls()).toEqual(["progress"]);
 	});
 
-	test("node timeout, output limit, non-zero exit, invalid and truncated replies", async () => {
-		const expected = {
-			timeout: ["call", "TransportError", "transport:progress_timeout"],
-			flood: ["call", "TransportError", "transport:progress_output_limit"],
-			exit: ["call", "TransportError", "transport:progress_exit"],
-			garbage: ["validate", "TransportError", "transport:progress_reply_invalid"],
-			truncated: ["validate", "TransportError", "transport:progress_reply_invalid"],
-		} as const;
-		for (const [mode, [phase, errorClass, code]] of Object.entries(expected)) {
-			// Only the deliberately blocked POSIX stand-in needs a shorter wait.
-			// Keep the existing Windows startup allowance and non-timeout deadlines.
-			const posixTimeoutMs = mode === "timeout" && !WIN ? 150 : 400;
-			const w = world({ progress: { posixTimeoutMs } });
+	const expected = {
+		timeout: ["call", "TransportError", "transport:progress_timeout"],
+		flood: ["call", "TransportError", "transport:progress_output_limit"],
+		exit: ["call", "TransportError", "transport:progress_exit"],
+		garbage: ["validate", "TransportError", "transport:progress_reply_invalid"],
+		truncated: ["validate", "TransportError", "transport:progress_reply_invalid"],
+	} as const;
+	for (const [mode, [phase, errorClass, code]] of Object.entries(expected)) {
+		test(`node ${mode} is unknown with the expected diagnostic and no retry`, async () => {
+			const w = world({ progress: { posixTimeoutMs: 400 } });
 			const a = w.active(`${mode}-a`);
 			const b = w.active(`${mode}-b`);
 			transcript(a.sessionId, [user()], 10);
@@ -690,8 +687,8 @@ describe("transcript and node failures (verdict unknown with a deny-by-default d
 			// Never retried within the interval; one command for both sessions.
 			await w.fleet.refreshProgress();
 			expect(w.calls()).toEqual(["progress"]);
-		}
-	});
+		});
+	}
 
 	test("no registered route: an OS this hub cannot run, a non-ssh foreign route", async () => {
 		const w = world({ nodes: [{ ...node("w1"), os: process.platform === "win32" ? "linux" : "win32", transport: { command: "gjc", args: [] } } as unknown as NodeConfig] });

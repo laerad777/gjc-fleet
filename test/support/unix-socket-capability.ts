@@ -1,5 +1,13 @@
 const UNSUPPORTED = new Set(["EPERM", "EAFNOSUPPORT", "EPROTONOSUPPORT", "EOPNOTSUPP", "ENOSYS"]);
 
+/** Empty, false and zero mean local mode; unexpected non-empty values keep CI strict. */
+export function isStrictUnixSocketCi(ci?: string, githubActions?: string): boolean {
+	return [ci, githubActions].some((flag) => {
+		const value = flag?.trim().toLowerCase();
+		return value !== undefined && value !== "" && value !== "false" && value !== "0";
+	});
+}
+
 export async function unixSocketSkipReason(
 	ci: boolean, probe?: () => Promise<void>, corroborate?: () => string | undefined,
 ): Promise<string | undefined> {
