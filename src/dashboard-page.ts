@@ -1691,7 +1691,11 @@ ${'<div class="grab" id="grab" role="button" tabindex="0" aria-label="Resize det
 	/* ---- zoom and pan: the map layer is one transformed element; scale 1 is the fit view ---- */
 	function clampView(){
 		var pad=40,R=MOB?mapBand:null;
-		function ax(lo,hi,start,end,t){var a=end-hi*VW.k,b=start-lo*VW.k,mn=Math.min(a,b)-pad,mx=Math.max(a,b)+pad;return Math.min(mx,Math.max(mn,t))}
+		function ax(lo,hi,start,end,t){
+		  var a=end-hi*VW.k,b=start-lo*VW.k;
+		  var mn=Math.min(a,b)-pad,mx=Math.max(a,b)+pad;
+		  return Math.min(mx,Math.max(mn,t));
+		}
 		VW.x=ax(CB.x0,CB.x1,0,W,VW.x);VW.y=ax(CB.y0,CB.y1,R?R.y0:0,R?R.y1:H,VW.y);
 	}
 	function applyView(){
@@ -1942,7 +1946,10 @@ ${'<div class="grab" id="grab" role="button" tabindex="0" aria-label="Resize det
 	}
 	/* Stable inputs to the cluster-mode decision; the live header height is deliberately not an input. */
 	function cmKey(){return JSON.stringify([V.nodes.map(function(v){return [v.id,v.os]}),innerWidth,innerHeight,fontsReady])}
-	function layoutKey(){var header=document.querySelector('header');return JSON.stringify([V.units.map(function(v){return [v.id,v.os]}),innerWidth,innerHeight,header&&header.offsetHeight||0])}
+	function layoutKey(){
+		var header=document.querySelector('header'),phoneQueue=innerWidth<700&&V.queue.length>0;
+		return JSON.stringify([V.units.map(function(v){return [v.id,v.os]}),innerWidth,innerHeight,header&&header.offsetHeight||0,phoneQueue]);
+	}
 	function paintQueue(){
 		var k=JSON.stringify(V.queue.map(function(t){return t.id}));
 		if(k===qSig)return;qSig=k;
@@ -1963,6 +1970,9 @@ ${'<div class="grab" id="grab" role="button" tabindex="0" aria-label="Resize det
 			ql.textContent=V.queue.length+' queued';
 			ql.setAttribute('role','button');ql.setAttribute('tabindex','0');ql.setAttribute('aria-label','Open hub overview, '+V.queue.length+' queued');
 			ql.onclick=function(){var h=$('hubnode');if(h)openHub(h)};
+			ql.onkeydown=function(e){
+				if(e.key==='Enter'||e.key===' '){e.preventDefault();ql.onclick()}
+			};
 		}else{
 			ql.className='ql';ql.style.left=HUBP.x+'px';ql.style.top=HUBP.y+QL(qs)+'px';
 			ql.textContent='Queue · '+V.queue.length+' waiting'+(V.queue.length>qs.length?' (showing '+qs.length+')':'');

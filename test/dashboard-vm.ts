@@ -28,6 +28,8 @@ class DashboardElement {
 	getBoundingClientRect() { return { height: 0, top: 0 }; }
 	removeAttribute(key: string) { this.attrs.delete(key); }
 	listeners = new Map<string, (event: unknown) => void>();
+	onkeydown?: (event: { key: string; preventDefault: () => void }) => void;
+	onclick?: () => void;
 	hidden = false;
 	disabled = false;
 	static focused: DashboardElement | null = null;
@@ -45,7 +47,13 @@ class DashboardElement {
 export const focusedElement = (): unknown => DashboardElement.focused;
 
 export async function renderDashboardFixture(state: DashboardState, options: {
-	deliverState?: (cb: (state: DashboardState) => void) => void; stateNow?: () => DashboardState; pollTimers?: Array<() => void>; hash?: string; width?: number; height?: number; windowListeners?: DashboardElement["listeners"];
+	deliverState?: (cb: (state: DashboardState) => void) => void;
+	stateNow?: () => DashboardState;
+	pollTimers?: Array<() => void>;
+	hash?: string;
+	width?: number;
+	height?: number;
+	windowListeners?: DashboardElement["listeners"];
 } = {}) {
 	const elements = new Map<string, DashboardElement>();
 	const byId = (id: string) => {
