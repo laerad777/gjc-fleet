@@ -363,6 +363,26 @@ test("trustedPathValue skips only EACCES from one locate and still throws other 
 });
 
 const chmodEnforced = !WIN && process.getuid?.() !== 0;
+test("resolveProgram finds git after an empty entry, a missing directory and a file entry", () => {
+	const missing = join(dir("path-missing-parent"), "missing");
+	const file = join(dir("path-file-entry"), "not-a-directory");
+	writeFileSync(file, "");
+	const entries = ["", missing, file, gitDir];
+	let locked = "";
+	if (chmodEnforced) {
+		const denied = dir("path-mix-denied");
+		locked = join(denied, "locked");
+		mkdirSync(locked);
+		chmodSync(denied, 0);
+		entries.splice(3, 0, locked);
+	}
+	process.env.PATH = entries.join(DELIM);
+	try {
+		expect(resolveProgram("git")).toBe(realGit);
+	} finally {
+		if (locked) chmodSync(dirname(locked), 0o700);
+	}
+});
 test.skipIf(!chmodEnforced)("trustedPathValue drops a PATH entry the process cannot traverse", () => {
 	const denied = dir("path-value-denied");
 	const locked = join(denied, "locked");
