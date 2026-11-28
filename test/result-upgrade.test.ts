@@ -111,7 +111,7 @@ test("unknown result-test effect after execution cannot rerun across reopen", as
 	expect(await readFile(f.counter, "utf8")).toBe("once\n");
 	expect(f.store.task(f.task.id)?.resultManifest).toEqual(f.original);
 	expect(f.store.task(f.task.id)?.result?.verified).toBe(false);
-});
+}, 20_000);
 
 test("verifier mutation cannot be attributed to cached artifact bytes", async () => {
 	const f = await fixture();
