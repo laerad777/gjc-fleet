@@ -28,6 +28,26 @@ A PASS is synthetic same-host cross-container evidence, not a real cross-host/Ta
 
 ## Real-node preflight
 
+`preflight-real-node.ts` reads one local JSON file and does not connect to a host.
+It does not replace a real-node run. Passing this check is not evidence that two
+hosts admitted work, opened a database, or failed a peer connection.
+
+```sh
+bun test/fixtures/cell-acceptance/preflight-real-node.ts evidence.json
+```
+
+The file is one object: `runId`, `hosts` (roles `a` and `b`, each with
+`machineId`, `canonicalPath`, `identity.device`, `identity.inode`),
+`productionChecks` (one per host, `checked` and `dbs`), `peerOpen`
+(one each way, `opened: false`, same `runId`), and `restart` for A
+after an exit on the original host and file.
+
+A same machine id fails like this:
+
+```text
+Fleet real-node preflight FAILED: machine ids are the same
+```
+
 `preflight-real-node.ts` reads one local evidence file and does not connect to a host.
 It aborts unless the machine ids differ, each host has one production-DB check
 (an empty list is allowed only when that check was recorded), each test DB's
