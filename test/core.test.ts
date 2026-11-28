@@ -542,6 +542,28 @@ describe("effect journal and authoritative observations", () => {
 		expect(store.reserve(store.submit(input("another")).id, headroom(["node"], 1)).held).toBe(false);
 		expect(() => store.verifyResult(id, {})).toThrow("terminal receipt");
 	});
+	test("unissued and exhausted poll sequences do not change the recorded task", () => {
+		const path = dbPath();
+		const store = open(path);
+		const id = running(store);
+		const poll = store.beginObservation(id)!;
+		const before = store.task(id);
+		expect(() => store.observe(id, receipt("unissued"), poll + 1)).toThrow(expect.objectContaining({ code: "POLL_CONFLICT" }));
+		expect(store.task(id)).toEqual(before);
+		store.observe(id, receipt("issued"), poll);
+		expect(store.task(id)?.pollApplied).toBe(poll);
+
+		const db = new Database(path);
+		try {
+			db.query("UPDATE tasks SET data=json_set(data, '$.pollIssued', ?) WHERE id=?").run(Number.MAX_SAFE_INTEGER, id);
+		} finally {
+			db.close();
+		}
+		const exhausted = store.task(id);
+		expect(exhausted?.pollIssued).toBe(Number.MAX_SAFE_INTEGER);
+		expect(() => store.beginObservation(id)).toThrow(expect.objectContaining({ code: "POLL_LIMIT" }));
+		expect(store.task(id)).toEqual(exhausted);
+	});
 	test("local poll ordering rejects stale terminal/failure and fresh reads can resume question cycles", () => {
 		const store = open(dbPath(), 1);
 		const id = running(store);
