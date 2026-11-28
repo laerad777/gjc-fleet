@@ -1683,18 +1683,19 @@ ${'<div class="grab" id="grab" role="button" tabindex="0" aria-label="Resize det
 		if(N>8)cols=Math.max(2,cols);
 		var gw=cols*cellW-gap,gx=cx-gw/2;
 		var gy=hy+hb/2+(V.queue.length?grTok('--gr-queue-h',34):grTok('--gr-hub-gap',6)+8);
+		var trunkY=hy+52*HS,busY=(trunkY+gy)/2;
+		if(V.queue.length){
+			var pillTop=hy+HUBBOX/2*HS+6,hot=grTok('--lk-w-hot',2.8);
+			var pillBox=grTok('--ql-border',1)*2+grTok('--ql-pad-y',8)*2+grTok('--ql-line',14);
+			busY=pillTop+pillBox+hot;
+			gy=Math.max(gy,busY+hot);
+		}
 		V.units.forEach(function(v,i){
 			var x=gx+(i%cols+.5)*cellW,y=gy+Math.floor(i/cols)*cellH+NS0/2;
 			base[v.id]={x:x,y:y};pos[v.id]={x:x,y:y};DLIM[v.id]=0;
 			var el=NEL[v.id];el.style.left=x+'px';el.style.top=y+'px';
 		});
 		var rows=Math.ceil(N/cols);
-		var trunkY=hy+52*HS,busY=(trunkY+gy)/2;
-		if(V.queue.length){
-			var pillTop=hy+HUBBOX/2*HS+6;
-			var pillBox=grTok('--ql-border',1)*2+grTok('--ql-pad-y',8)*2+grTok('--ql-line',14);
-			busY=Math.max(gy,pillTop+pillBox+grTok('--lk-w-hot',2.8));
-		}
 		GRL={gx:gx,cellW:cellW,cols:cols,gap:gap,busY:busY};
 		CB={x0:gx-12,y0:R.y0-4,x1:gx+gw+12,y1:gy+(rows-1)*cellH+cellH-gap+8};
 		var kf=Math.min(1,(R.x1-R.x0)/(CB.x1-CB.x0),(R.y1-R.y0)/(CB.y1-CB.y0));

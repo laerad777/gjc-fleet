@@ -84,7 +84,25 @@ test("a phone queue keeps its place and the link bus stays below it", async () =
 			return Number(found[1]);
 		};
 		const pillBox = token("--ql-border") * 2 + token("--ql-pad-y") * 2 + token("--ql-line");
-		expect(busY).toBeGreaterThanOrEqual(pillY + pillBox + token("--lk-w-hot"));
+		const hot = token("--lk-w-hot");
+		const orb = token("--gr-orb");
+		expect(busY).toBeGreaterThanOrEqual(pillY + pillBox + hot);
+		const placed = [...Array(7)].map((_, i) => {
+			const nodeEl = world.children.find((el) => el.getAttribute("data-id") === "q" + i)!;
+			return { i, x: parseFloat(nodeEl.style.left), y: parseFloat(nodeEl.style.top), d: linkPath(els as Map<string, El>, i) };
+		});
+		const firstRow = Math.min(...placed.map((item) => item.y));
+		for (const item of placed) {
+			if (item.y !== firstRow) continue;
+			expect(item.y - orb / 2).toBeGreaterThanOrEqual(busY + hot / 2);
+		}
+		const lower = placed.filter((item) => item.y > firstRow);
+		expect(lower.length).toBeGreaterThan(0);
+		for (const item of lower) {
+			const lane = /H([\d.-]+) V[\d.-]+ H([\d.-]+)$/.exec(item.d);
+			expect(lane).not.toBeNull();
+			expect(Number(lane![1])).toBeLessThan(item.x);
+		}
 	} finally {
 		store.close();
 		rmSync(dir, { recursive: true, force: true });
