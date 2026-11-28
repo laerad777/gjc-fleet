@@ -2,25 +2,29 @@ import { expect, test } from "bun:test";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-	checkPreflight,
-	type PreflightEvidence,
-} from "./fixtures/cell-acceptance/preflight-real-node";
+import { checkPreflight, type PreflightEvidence } from "./fixtures/cell-acceptance/preflight-real-node";
 
 const script = join(import.meta.dir, "fixtures/cell-acceptance/preflight-real-node.ts");
 
 function evidence(patch: Partial<PreflightEvidence> = {}): PreflightEvidence {
 	return {
+		runId: "run-1",
 		hosts: [
-			{ role: "a", machineId: "machine-a", dbPath: "/pilot/a/fleet.sqlite" },
-			{ role: "b", machineId: "machine-b", dbPath: "/pilot/b/fleet.sqlite" },
+			{ role: "a", machineId: "machine-a", canonicalPath: "/pilot/a/fleet.sqlite", identity: { device: "da", inode: "1" } },
+			{ role: "b", machineId: "machine-b", canonicalPath: "/pilot/b/fleet.sqlite", identity: { device: "db", inode: "2" } },
 		],
-		productionDbPaths: ["/var/lib/gjc/fleet.sqlite"],
+		productionDbs: [
+			{ machineId: "machine-a", canonicalPath: "/var/lib/gjc/fleet.sqlite", identity: { device: "da", inode: "9" } },
+			{ machineId: "machine-b", canonicalPath: "/var/lib/gjc/fleet.sqlite", identity: { device: "db", inode: "9" } },
+		],
 		peerOpen: [
-			{ from: "b", target: "a", opened: false },
-			{ from: "a", target: "b", opened: false },
+			{ from: "b", target: "a", canonicalPath: "/pilot/a/fleet.sqlite", identity: { device: "da", inode: "1" }, opened: false },
+			{ from: "a", target: "b", canonicalPath: "/pilot/b/fleet.sqlite", identity: { device: "db", inode: "2" }, opened: false },
 		],
-		restart: { role: "a", machineId: "machine-a", dbPath: "/pilot/a/fleet.sqlite" },
+		restart: {
+			role: "a", machineId: "machine-a", canonicalPath: "/pilot/a/fleet.sqlite",
+			identity: { device: "da", inode: "1" }, runId: "run-1", exited: true, restartedAfterExit: true,
+		},
 		...patch,
 	};
 }
@@ -35,10 +39,17 @@ test("the same machine id aborts", () => {
 	expect(checkPreflight(same)).toBe("machine ids are the same");
 });
 
-test("a production DB path aborts", () => {
+test("the same file identity as production aborts even when the path text differs", () => {
 	const live = evidence();
-	live.hosts[0]!.dbPath = live.productionDbPaths[0] + "/";
-	expect(checkPreflight(live)).toBe("test DB path is a production DB");
+	live.hosts[0]!.canonicalPath = "/tmp/alias/fleet.sqlite";
+	live.hosts[0]!.identity = { device: "da", inode: "9" };
+	expect(checkPreflight(live)).toBe("test DB is a production DB");
+});
+
+test("a canonical production path aborts", () => {
+	const live = evidence();
+	live.hosts[0]!.canonicalPath = "/var/lib/gjc/fleet.sqlite/";
+	expect(checkPreflight(live)).toBe("test DB is a production DB");
 });
 
 test("a peer that opens the other DB aborts", () => {
@@ -47,23 +58,44 @@ test("a peer that opens the other DB aborts", () => {
 	expect(checkPreflight(opened)).toBe("peer opened the other host DB");
 });
 
-test("a missing peer observation aborts", () => {
+test("a missing direction aborts", () => {
 	const missing = evidence();
 	missing.peerOpen = [missing.peerOpen[1]!];
 	expect(checkPreflight(missing)).toBe("peer open evidence is missing");
+});
+
+test("two observations for one direction abort", () => {
+	const extra = evidence();
+	extra.peerOpen.push({ ...extra.peerOpen[0]!, opened: false });
+	expect(checkPreflight(extra)).toBe("peer observations contradict");
+});
+
+test("an observation of a different file aborts", () => {
+	const other = evidence();
+	other.peerOpen[0]!.identity = { device: "da", inode: "8" };
+	expect(checkPreflight(other)).toBe("peer observation is not the target DB");
 });
 
 test("a missing restart record aborts", () => {
 	expect(checkPreflight(evidence({ restart: null }))).toBe("A restart record is missing");
 });
 
-test("a restart on another host or DB aborts", () => {
+test("a restart on another host, file, or run aborts", () => {
 	const otherHost = evidence();
-	otherHost.restart = { role: "a", machineId: "machine-b", dbPath: "/pilot/a/fleet.sqlite" };
+	otherHost.restart = { ...otherHost.restart!, machineId: "machine-b" };
 	expect(checkPreflight(otherHost)).toBe("A restart host is not the original host");
-	const otherDb = evidence();
-	otherDb.restart = { role: "a", machineId: "machine-a", dbPath: "/pilot/other/fleet.sqlite" };
-	expect(checkPreflight(otherDb)).toBe("A restart DB is not the original DB");
+	const otherFile = evidence();
+	otherFile.restart = { ...otherFile.restart!, identity: { device: "da", inode: "7" } };
+	expect(checkPreflight(otherFile)).toBe("A restart file is not the original DB");
+	const otherRun = evidence();
+	otherRun.restart = { ...otherRun.restart!, runId: "run-2" };
+	expect(checkPreflight(otherRun)).toBe("A restart is not the same run");
+});
+
+test("a restart that did not follow an exit aborts", () => {
+	const stillUp = evidence();
+	stillUp.restart = { ...stillUp.restart!, exited: false };
+	expect(checkPreflight(stillUp)).toBe("A restart did not follow an exit");
 });
 
 test("the CLI passes and aborts on local files", async () => {
