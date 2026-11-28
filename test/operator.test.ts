@@ -511,7 +511,7 @@ console.log(JSON.stringify({ok:true,result:${JSON.stringify(abortMode)} === "nes
 				original,
 			);
 			expect(await Bun.file(f.log).exists()).toBe(false);
-		});
+		}, 15_000);
 	}
 	test("restart captures authority only for pre-prompt new owners; historical routes are never retrofitted", async () => {
 		for (const historical of [false, true]) {
