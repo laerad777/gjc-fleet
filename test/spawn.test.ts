@@ -387,8 +387,15 @@ test.skipIf(!chmodEnforced)("a mode 000 PATH directory stays when its name still
 	const locked = dir("mode-000-entry");
 	chmodSync(locked, 0);
 	process.env.PATH = [locked, gitDir].join(DELIM);
+	let named = true;
+	try { realpathSync.native(locked); }
+	catch (error: any) {
+		if (error?.code !== "EACCES") throw error;
+		named = false;
+	}
 	try {
-		expect(trustedPathValue().split(DELIM)).toContain(locked);
+		const kept = trustedPathValue().split(DELIM);
+		expect(kept.includes(locked)).toBe(named);
 		expect(resolveProgram("git")).toBe(realGit);
 	} finally {
 		chmodSync(locked, 0o700);
