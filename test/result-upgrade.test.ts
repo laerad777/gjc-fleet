@@ -99,11 +99,14 @@ test("excluded deliverables retain passing test evidence without verified task s
 });
 
 describe("unknown result-test effect after execution cannot rerun across reopen", () => {
-	// Cycle 1 (the lost verifier response) runs once; each test adds one cycle so each stays fast.
 	const local: (() => Promise<void>)[] = [];
 	let f: Awaited<ReturnType<typeof fixture>>;
+	// Give fixture creation and the real verifier attempt separate default-sized budgets.
+	const setupStepTimeoutMs = 5_000;
 	beforeAll(async () => {
 		f = await fixture(false, true, "completed_unverified", undefined, local);
+	}, setupStepTimeoutMs);
+	beforeAll(async () => {
 		const original = (f.fleet as any).node.bind(f.fleet);
 		(f.fleet as any).node = async (task: unknown, request: any) => {
 			const value = await original(task, request);
@@ -112,7 +115,7 @@ describe("unknown result-test effect after execution cannot rerun across reopen"
 		};
 		await expect(f.fleet.result(f.task.id, f.argv)).rejects.toThrow("lost real verifier response");
 		f.reopen();
-	});
+	}, setupStepTimeoutMs);
 	afterAll(async () => { for (const cleanup of local.splice(0).reverse()) await cleanup(); });
 	test("a retained unknown effect reads back TEST_UNKNOWN, never a rerun", async () => {
 		await expect(f.fleet.result(f.task.id, f.argv)).rejects.toMatchObject({ code: "TEST_UNKNOWN" });
