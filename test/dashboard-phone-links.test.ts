@@ -77,9 +77,9 @@ test("a phone queue keeps its place and the link bus stays below it", async () =
 		const bus = / V([\d.-]+) /.exec(linkPath(els as Map<string, El>, 0));
 		expect(bus).not.toBeNull();
 		const busY = Number(bus![1]);
-		const pillBottom = pillY + 8 + 11 + 8;
-		expect(busY).toBeGreaterThan(pillY);
-		expect(busY).toBeGreaterThanOrEqual(pillBottom);
+		const pillBox = 1 + 8 + 11 + 8 + 1;
+		const stroke = 1.6;
+		expect(busY).toBeGreaterThanOrEqual(pillY + pillBox + stroke);
 	} finally {
 		store.close();
 		rmSync(dir, { recursive: true, force: true });

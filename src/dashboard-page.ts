@@ -1688,7 +1688,10 @@ ${'<div class="grab" id="grab" role="button" tabindex="0" aria-label="Resize det
 		});
 		var rows=Math.ceil(N/cols);
 		var trunkY=hy+52*HS,busY=(trunkY+gy)/2;
-		if(V.queue.length)busY=gy;
+		if(V.queue.length){
+			var pillTop=hy+HUBBOX/2*HS+6,pillBox=1+8+11+8+1,stroke=1.6;
+			busY=Math.max(gy,pillTop+pillBox+stroke);
+		}
 		GRL={gx:gx,cellW:cellW,cols:cols,gap:gap,busY:busY};
 		CB={x0:gx-12,y0:R.y0-4,x1:gx+gw+12,y1:gy+(rows-1)*cellH+cellH-gap+8};
 		var kf=Math.min(1,(R.x1-R.x0)/(CB.x1-CB.x0),(R.y1-R.y0)/(CB.y1-CB.y0));
