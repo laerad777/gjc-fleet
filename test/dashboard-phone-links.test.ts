@@ -51,6 +51,33 @@ test("phone grid links run on a trunk, bus and gutter and do not cross a node", 
 	}
 });
 
+test("a phone queue keeps its place and the link bus stays below it", async () => {
+	const dir = mkdtempSync(join(tmpdir(), "fleet-dashboard-links-queue-"));
+	const store = new FleetStore(join(dir, "fleet.db"));
+	try {
+		for (let i = 0; i < 7; i++) store.putNode(node("q" + i));
+		store.submit({
+			schemaVersion: 1, key: "phone-queue", caller: "fixture", repoId: "fixture",
+			baseCommit: "a".repeat(40), prompt: "fixture", required: {},
+		} as Parameters<FleetStore["submit"]>[0]);
+		const els = await renderDashboardFixture(getDashboardState(store), { width: 390, height: 800 });
+		const world = els.get("world") as El;
+		const hub = els.get("hubnode") as El;
+		const pill = world.children.find((el) => el.className === "ql pill");
+		expect(pill).toBeDefined();
+		const hubY = parseFloat(hub.style.top);
+		const pillY = parseFloat(pill!.style.top);
+		const hs = 7 > 12 ? 0.5 : 7 > 6 ? 0.56 : 0.62;
+		expect(pillY).toBeCloseTo(hubY + 150 / 2 * hs + 6, 5);
+		const bus = / V([\d.-]+) /.exec(linkPath(els as Map<string, El>, 0));
+		expect(bus).not.toBeNull();
+		expect(Number(bus![1])).toBeGreaterThan(pillY);
+	} finally {
+		store.close();
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
 test("desktop links stay on the hub curve", async () => {
 	const dir = mkdtempSync(join(tmpdir(), "fleet-dashboard-links-desk-"));
 	const store = new FleetStore(join(dir, "fleet.db"));
