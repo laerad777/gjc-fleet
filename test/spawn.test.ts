@@ -1,5 +1,9 @@
 import { afterAll, afterEach, beforeAll, expect, spyOn, test } from "bun:test";
-import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+	chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync,
+	type BufferEncodingOption, type EncodingOption, type PathLike,
+} from "node:fs";
+import type { NonSharedBuffer } from "node:buffer";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { FLEET_GIT_NAME, GIT_HARDENING, isolatedGitEnvironment, NULL_DEVICE, resolveProgram, spawnGit, spawnGitSync, spawnTrusted, trustedPathValue, UntrustedProgramError } from "../src/spawn";
@@ -328,4 +332,84 @@ test("spawnGitSync refuses a planted git under the repository even when PATH lea
 	expect(P.ran()).toEqual([]);
 	expect(resolveProgram("git", { untrusted: [f.repo] })).toBe(realGit);
 	expect(planted).not.toBe(realGit);
+});
+
+test("trustedPathValue skips only EACCES from one locate and still throws other errors", () => {
+	const denied = join(dir("locate-eacces"), "bin");
+	const broken = join(dir("locate-eio"), "bin");
+	const native = realpathSync.native.bind(realpathSync);
+	function locate(path: PathLike, options?: EncodingOption): string;
+	function locate(path: PathLike, options: BufferEncodingOption): NonSharedBuffer;
+	function locate(path: PathLike, options?: EncodingOption | BufferEncodingOption): string | NonSharedBuffer {
+		const text = String(path);
+		if (text.includes("locate-eacces")) throw Object.assign(new Error("denied"), { code: "EACCES" });
+		if (text.includes("locate-eio")) throw Object.assign(new Error("io"), { code: "EIO" });
+		if (options === "buffer") return native(path, "buffer");
+		if (options && typeof options === "object" && options.encoding === "buffer") return native(path, options);
+		return native(path, options);
+	}
+	const spy = spyOn(realpathSync, "native").mockImplementation(locate);
+	try {
+		process.env.PATH = [denied, gitDir].join(DELIM);
+		expect(trustedPathValue()).toBe(gitDir);
+		expect(Buffer.isBuffer(realpathSync.native(gitDir, "buffer"))).toBe(true);
+		process.env.PATH = [broken, gitDir].join(DELIM);
+		let code = "";
+		try { trustedPathValue(); } catch (error: any) { code = error?.code ?? ""; }
+		expect(code).toBe("EIO");
+	} finally {
+		spy.mockRestore();
+	}
+});
+
+const chmodEnforced = !WIN && process.getuid?.() !== 0;
+test("resolveProgram finds git after an empty entry, a missing directory and a file entry", () => {
+	const missing = join(dir("path-missing-parent"), "missing");
+	const file = join(dir("path-file-entry"), "not-a-directory");
+	writeFileSync(file, "");
+	const entries = ["", missing, file, gitDir];
+	let locked = "";
+	if (chmodEnforced) {
+		const denied = dir("path-mix-denied");
+		locked = join(denied, "locked");
+		mkdirSync(locked);
+		chmodSync(denied, 0);
+		entries.splice(3, 0, locked);
+	}
+	process.env.PATH = entries.join(DELIM);
+	try {
+		expect(resolveProgram("git")).toBe(realGit);
+	} finally {
+		if (locked) chmodSync(dirname(locked), 0o700);
+	}
+});
+test.skipIf(!chmodEnforced)("a mode 000 PATH directory stays when its name still resolves", () => {
+	const locked = dir("mode-000-entry");
+	chmodSync(locked, 0);
+	process.env.PATH = [locked, gitDir].join(DELIM);
+	let named = true;
+	try { realpathSync.native(locked); }
+	catch (error: any) {
+		if (error?.code !== "EACCES") throw error;
+		named = false;
+	}
+	try {
+		const kept = trustedPathValue().split(DELIM);
+		expect(kept.includes(locked)).toBe(named);
+		expect(resolveProgram("git")).toBe(realGit);
+	} finally {
+		chmodSync(locked, 0o700);
+	}
+});
+test.skipIf(!chmodEnforced)("trustedPathValue drops a PATH entry the process cannot traverse", () => {
+	const denied = dir("path-value-denied");
+	const locked = join(denied, "locked");
+	mkdirSync(join(locked, "bin"), { recursive: true });
+	process.env.PATH = [join(locked, "bin"), gitDir].join(DELIM);
+	chmodSync(denied, 0);
+	try {
+		expect(trustedPathValue()).toBe(gitDir);
+	} finally {
+		chmodSync(denied, 0o700);
+	}
 });

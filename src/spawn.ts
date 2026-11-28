@@ -226,9 +226,18 @@ export function resolveProgram(program: string, context: TrustContext = {}): str
  */
 export function trustedPathValue(context: TrustContext = {}): string {
 	const untrusted = roots(context.untrusted ?? []);
-	return pathEntries()
-		.filter((e) => !inside(locate(e), untrusted))
-		.join(WIN ? ";" : ":");
+	const kept: string[] = [];
+	for (const entry of pathEntries()) {
+		let location: Location;
+		try {
+			location = locate(entry);
+		} catch (error: any) {
+			if (error?.code === "EACCES") continue;
+			throw error;
+		}
+		if (!inside(location, untrusted)) kept.push(entry);
+	}
+	return kept.join(WIN ? ";" : ":");
 }
 
 /** Bun.spawn options plus worker-controlled trees for `resolveProgram`. */

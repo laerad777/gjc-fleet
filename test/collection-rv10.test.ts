@@ -288,7 +288,7 @@ describe("rv10 LOW-3: snapshot files are never written through a planted link", 
 			const f = await repositoryFixture("fleet-collection-rv10-");
 			directories.push(f.dir);
 			const prepare = (attemptId: string) => prepareWorkspace({ taskId: "task", attemptId, nodeId: "node", inputDigest: sha256("input"), repo: f.repo, baseCommit: f.baseCommit, workspaceRoot: f.workspaceRoot });
-			const first = await prepare("attempt1");
+			await mkdir(join(f.workspaceRoot, ".collection-snapshots"), { recursive: true });
 			const victim = join(f.dir, "victim.txt");
 			await writeFile(victim, "VICTIM");
 			const planted = join(f.workspaceRoot, ".collection-snapshots", "task-attempt2." + suffix);
@@ -299,8 +299,22 @@ describe("rv10 LOW-3: snapshot files are never written through a planted link", 
 			await writeFile(join(second.path, "d.txt"), "d");
 			const result = await collectResult(second, []);
 			expect(files(result)).toEqual(["d.txt"]);
-			expect(first.path).not.toBe(second.path);
+			expect(second.path).toBe(join(f.workspaceRoot, "task-attempt2"));
+			expect(second.path).not.toBe(join(f.workspaceRoot, "task-attempt1"));
 		});
+	test("two attempts keep separate workspace paths", async () => {
+		const f = await repositoryFixture("fleet-collection-rv10-pair-");
+		directories.push(f.dir);
+		const prepare = (attemptId: string) => prepareWorkspace({
+			taskId: "task", attemptId, nodeId: "node", inputDigest: sha256("input"),
+			repo: f.repo, baseCommit: f.baseCommit, workspaceRoot: f.workspaceRoot,
+		});
+		const first = await prepare("attempt1");
+		const second = await prepare("attempt2");
+		expect(first.path).not.toBe(second.path);
+		expect(existsSync(first.path)).toBe(true);
+		expect(existsSync(second.path)).toBe(true);
+	}, 15_000);
 });
 
 describe("rv10: checkPreparation stays side-effect free with operator rules", () => {
