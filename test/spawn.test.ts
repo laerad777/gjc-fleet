@@ -334,12 +334,13 @@ test("trustedPathValue skips only EACCES from one locate and still throws other 
 	const denied = join(dir("locate-eacces"), "bin");
 	const broken = join(dir("locate-eio"), "bin");
 	const native = realpathSync.native.bind(realpathSync);
-	const spy = spyOn(realpathSync, "native").mockImplementation((target) => {
+	const locate = ((target: Parameters<typeof realpathSync.native>[0]) => {
 		const text = String(target);
 		if (text.includes("locate-eacces")) throw Object.assign(new Error("denied"), { code: "EACCES" });
 		if (text.includes("locate-eio")) throw Object.assign(new Error("io"), { code: "EIO" });
 		return native(target);
-	});
+	}) as typeof realpathSync.native;
+	const spy = spyOn(realpathSync, "native").mockImplementation(locate);
 	try {
 		process.env.PATH = [denied, gitDir].join(DELIM);
 		expect(trustedPathValue()).toBe(gitDir);
