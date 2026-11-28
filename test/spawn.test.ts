@@ -1,5 +1,9 @@
 import { afterAll, afterEach, beforeAll, expect, spyOn, test } from "bun:test";
-import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import {
+	chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync,
+	type BufferEncodingOption, type EncodingOption, type PathLike,
+} from "node:fs";
+import type { NonSharedBuffer } from "node:buffer";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { FLEET_GIT_NAME, GIT_HARDENING, isolatedGitEnvironment, NULL_DEVICE, resolveProgram, spawnGit, spawnGitSync, spawnTrusted, trustedPathValue, UntrustedProgramError } from "../src/spawn";
@@ -334,16 +338,21 @@ test("trustedPathValue skips only EACCES from one locate and still throws other 
 	const denied = join(dir("locate-eacces"), "bin");
 	const broken = join(dir("locate-eio"), "bin");
 	const native = realpathSync.native.bind(realpathSync);
-	const locate = ((target: Parameters<typeof realpathSync.native>[0]) => {
-		const text = String(target);
+	function locate(path: PathLike, options?: EncodingOption): string;
+	function locate(path: PathLike, options: BufferEncodingOption): NonSharedBuffer;
+	function locate(path: PathLike, options?: EncodingOption | BufferEncodingOption): string | NonSharedBuffer {
+		const text = String(path);
 		if (text.includes("locate-eacces")) throw Object.assign(new Error("denied"), { code: "EACCES" });
 		if (text.includes("locate-eio")) throw Object.assign(new Error("io"), { code: "EIO" });
-		return native(target);
-	}) as typeof realpathSync.native;
+		if (options === "buffer") return native(path, "buffer");
+		if (options && typeof options === "object" && options.encoding === "buffer") return native(path, options);
+		return native(path, options);
+	}
 	const spy = spyOn(realpathSync, "native").mockImplementation(locate);
 	try {
 		process.env.PATH = [denied, gitDir].join(DELIM);
 		expect(trustedPathValue()).toBe(gitDir);
+		expect(Buffer.isBuffer(realpathSync.native(gitDir, "buffer"))).toBe(true);
 		process.env.PATH = [broken, gitDir].join(DELIM);
 		let code = "";
 		try { trustedPathValue(); } catch (error: any) { code = error?.code ?? ""; }
