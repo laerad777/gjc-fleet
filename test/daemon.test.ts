@@ -45,6 +45,20 @@ async function runFor(d: FleetDaemon, ms: number) {
 	d.stop();
 	return done;
 }
+/** Stop after durable evidence, letting any in-flight daemon work drain. */
+async function runUntilEvidence(d: FleetDaemon, check: () => boolean, after?: () => Promise<void>) {
+	const done = d.run();
+	let exited = false;
+	void done.then(() => { exited = true; }, () => { exited = true; });
+	try {
+		await until(() => exited || check(), 4_000);
+		if (!check()) throw new Error("daemon stopped before recording expected evidence");
+		await after?.();
+	} finally {
+		d.stop();
+		await done;
+	}
+}
 const raw = (path: string) => new Database(path);
 function sql<T>(path: string, query: string, ...args: any[]): T {
 	const db = raw(path);
@@ -432,7 +446,8 @@ test("after settle, return runs where the rules allow; otherwise the reason is r
 	f.store.observe(noCustody, { eventId: "t", digest: observationDigest(body), ...body });
 	const broker = fakeBroker(f.dir, f.store);
 	const d = daemon(f.fleet, { connectReturn: broker.connect as any });
-	await runFor(d, 800);
+	await runUntilEvidence(d, () => f.store.getOperation(ok, "resource-return-confirmed") !== undefined &&
+		f.store.events(noCustody).some((e) => e.kind === "daemon_note"));
 	expect(f.store.getOperation(ok, "resource-return-confirmed")).toBeDefined();
 	expect(f.store.task(ok)!.held).toBe(false);
 	expect(broker.stats.closes).toBe(1);
@@ -750,7 +765,13 @@ for (const after of ["offline", "foreign", "unproven"] as const) test(`F2: after
 	const f = fixture(["n1"]);
 	const id = settledOn(f.store, f.dir, "n1", "settled");
 	const broker = postCloseBroker(f.store, after);
-	await runFor(daemon(f.fleet, { connectReturn: broker.connect as any, returnRetries: 1, returnEveryMs: 20 }), 1_200);
+	let offset = 0;
+	const d = daemon(f.fleet, { connectReturn: broker.connect as any, returnRetries: 1, returnEveryMs: 20, now: () => Date.now() + offset });
+	await runUntilEvidence(d, () => f.store.events(id).some((e) => e.kind === "daemon_note"), async () => {
+		// Give the scheduler another pass beyond the re-list interval: exhaustion must not be temporary.
+		offset += 1_000;
+		await d.cycle();
+	});
 	// Close pass: listing + close + post-close listing (outcome 1); one re-list (outcome 2 > 1 retry): done.
 	expect(broker.stats.closes).toBe(1);
 	expect(broker.stats.lists).toBe(3);
