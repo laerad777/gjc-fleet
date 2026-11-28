@@ -6,6 +6,9 @@ on:
     paths:
       - ".github/workflows/fleet-cell-acceptance.yml"
       - "test/fixtures/cell-acceptance/**"
+      - "src/**"
+      - "test/fixtures/coordinator.ts"
+      - "test/admission-fixture.ts"
 
 permissions:
   contents: read

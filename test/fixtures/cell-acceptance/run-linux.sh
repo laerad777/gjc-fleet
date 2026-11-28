@@ -5,7 +5,7 @@ die() { printf 'Fleet cell acceptance FAILED: %s\n' "$*" >&2; exit 1; }
 command -v docker >/dev/null || die 'Docker CLI missing'
 command -v timeout >/dev/null || die 'timeout command missing'
 docker --context default compose version >/dev/null || die 'Docker Compose missing'
-: "${FLEET_FIXTURE_REPO:?point at isolated Fleet fixture source at 6c01cb7}"
+: "${FLEET_FIXTURE_REPO:?point at isolated Fleet fixture source at the reviewed revision}"
 : "${FLEET_CELL_IMAGE:?prebuilt test-only image from image/Dockerfile required}"
 [[ -z ${DOCKER_HOST:-} && -z ${DOCKER_CONTEXT:-} ]] || die 'remote Docker contexts are not supported'
 host=$(docker context inspect default --format '{{.Endpoints.docker.Host}}')

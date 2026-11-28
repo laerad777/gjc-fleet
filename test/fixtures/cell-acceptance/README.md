@@ -1,16 +1,18 @@
 # Fleet Gated Two-Cell Survivor Fixture
 
-Test-only lane for Fleet baseline `6c01cb769271fddc8fee8b70731043dc5e7437c5`. Use a disposable Linux **local** Docker daemon, never the fleet or a shared production Docker context. No credentials, host networking, published ports, socket mounts, or production node addresses are required. No code in the fixture is installed on a Fleet worker.
+Test-only lane for the Fleet revision under review. Use a disposable Linux **local** Docker daemon, never the fleet or a shared production Docker context. No credentials, host networking, published ports, socket mounts, or production node addresses are required. No code in the fixture is installed on a Fleet worker.
 
 ## Run on a disposable Linux runner
 
-From this directory, using an independently verified clean Fleet checkout at the baseline:
+From this directory in a disposable checkout, set `FLEET_FIXTURE_SHA` to the reviewed commit you intend to test (the PR merge-test SHA for CI parity, if applicable). The checkout must already be verified and clean:
 
 ```sh
 export FLEET_FIXTURE_REPO=/absolute/path/to/isolated/gjc-fleet
-test "$(git -C "$FLEET_FIXTURE_REPO" rev-parse HEAD)" = 6c01cb769271fddc8fee8b70731043dc5e7437c5
-docker --context default build -t fleet-cell-fixture:6c01cb7 ./image
-FLEET_CELL_IMAGE=fleet-cell-fixture:6c01cb7 bash ./run-linux.sh
+test -n "$FLEET_FIXTURE_SHA" &&
+  test "$(git -C "$FLEET_FIXTURE_REPO" rev-parse HEAD)" = "$FLEET_FIXTURE_SHA" &&
+  test -z "$(git -C "$FLEET_FIXTURE_REPO" status --porcelain)" &&
+  docker --context default build -t fleet-cell-fixture:local ./image &&
+  FLEET_CELL_IMAGE=fleet-cell-fixture:local bash ./run-linux.sh
 ```
 
 Image build is a separate provisioning step (Bun 1.4.4 Debian image and OS Git). The runner itself requires a local image and rejects a missing container engine instead of skipping. It mounts just the Fleet source tree and two fixture files read-only. Each run creates a fresh randomized Compose project with an internal network and state volume per cell. No image pulls occur during the acceptance run. The runner checks the actual Docker network and mounts and cleans up only its own labeled project. The PASS message is contingent on successful teardown.
@@ -27,5 +29,5 @@ A PASS is synthetic same-host cross-container evidence, not a real cross-host/Ta
 ## Evidence boundary
 
 - Bun 1.4.4: local fixture helper exercised on separate disposable state roots; real B CLI submit/start/poll/result, independent exclusive proof file, reopened DB counts, and A's no-replay check passed. Local helper checks did not run a cross-container outage.
-- `bash -n` and YAML topology parse passed. No Docker/Podman/nerdctl available here; `run-linux.sh` exited nonzero for missing Docker. Build, actual Compose isolation, PID 1 lease, SIGKILL and cross-container execution are **not run**.
+- For hosted evidence, see the `Two isolated cells (Linux)` job in `Fleet cell acceptance` for the exact candidate. A local syntax check alone does not exercise Compose, PID 1 lease, SIGKILL, or cross-container execution.
 - Existing same-host proof is `test/cell-survival.test.ts` in this repository; it is not a substitute for the Compose run.
