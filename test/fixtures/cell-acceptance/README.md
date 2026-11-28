@@ -26,6 +26,13 @@ Image build is a separate provisioning step (Bun 1.4.4 Debian image and OS Git).
 
 A PASS is synthetic same-host cross-container evidence, not a real cross-host/Tailnet, provider, automatic-work, leader-election, authority-fencing or distributed failover test. The driver explicitly submits and starts the new B work; A's daemon does not perform admission and the fixture does not implement scheduling. Do not label wrong-home routing, a stale writer on a separate DB copy, or packet partitions as covered. Those are separate acceptance cases for the relevant implementations.
 
+## Real-node preflight
+
+`preflight-real-node.ts` reads one local evidence file and does not connect to a host.
+It aborts unless the two machine ids differ, neither test DB path is on the production
+list, each peer records that it could not open the other DB, and A's restart record
+names A's original machine id and original DB path.
+
 ## Evidence boundary
 
 - Bun 1.4.4: local fixture helper exercised on separate disposable state roots; real B CLI submit/start/poll/result, independent exclusive proof file, reopened DB counts, and A's no-replay check passed. Local helper checks did not run a cross-container outage.
