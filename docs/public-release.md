@@ -82,7 +82,7 @@ Jobs:
 - `static` runs on `ubuntu-latest`: it checks Git is at least 2.44, lints the workflow, then runs `bun install --frozen-lockfile`, `bunx tsc --noEmit`, `bunx tsc --noEmit -p tsconfig.test.json`, `bun run build` and both `bun src/cli.ts --help` and `bun .local/build/cli.js --help`.
 - `security` runs on `ubuntu-latest`: `bun scripts/privacy-scan.ts`, `bun run license:check`, then a secret scan of the pull request commits that never prints what it finds.
 - On docs-only changes, `docs` runs `bun test test/export-public.test.ts` to check release documentation and its workflow contract.
-- Otherwise, `test` runs on `ubuntu-latest` and `macos-latest`, and the separate `windows` job runs on `windows-latest`. Each runs `git --version`, `bun install --frozen-lockfile`, and `bun test test`.
+- Otherwise, `test` runs on `ubuntu-latest` and `macos-latest`, and the separate `windows` job runs on `windows-latest` as three parallel shards. The Ubuntu and macOS jobs run `git --version`, `bun install --frozen-lockfile`, and `bun test test`. Each Windows shard runs `git --version`, `bun install --frozen-lockfile`, and `bun test test --shard="${{ matrix.shard }}/3"`; Bun sorts the test files by path and deals them round-robin across the shards, so the shards cover the suite exactly once.
 - Separate Windows focus jobs run VHDX cleanup, restart observation, and daemon performance checks in parallel. They report targeted results early; the full Windows suite remains required by the gate.
 - `PR gate` always requires `changes`, `static`, and `security` to pass. For docs-only changes, it requires `docs` to pass and both `test` and `windows` to be skipped. Otherwise, it requires `docs` to be skipped and all three hosted OS suites to pass, including Windows.
 
