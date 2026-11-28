@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { NodeConfig } from "../src/contracts";
-import { getDashboardState } from "../src/dashboard";
+import { getDashboardState, renderDashboardHtml } from "../src/dashboard";
 import { FleetStore } from "../src/store";
 import { renderDashboardFixture } from "./dashboard-vm";
 
@@ -77,9 +77,38 @@ test("a phone queue keeps its place and the link bus stays below it", async () =
 		const bus = / V([\d.-]+) /.exec(linkPath(els as Map<string, El>, 0));
 		expect(bus).not.toBeNull();
 		const busY = Number(bus![1]);
-		const pillBox = 1 + 8 + 11 + 8 + 1;
-		const stroke = 1.6;
-		expect(busY).toBeGreaterThanOrEqual(pillY + pillBox + stroke);
+		const html = renderDashboardHtml();
+		const token = (name: string) => {
+			const found = new RegExp(name + ":(\\d+(?:\\.\\d+)?)").exec(html);
+			if (!found) throw new Error("missing " + name);
+			return Number(found[1]);
+		};
+		const pillBox = token("--ql-border") * 2 + token("--ql-pad-y") * 2 + token("--ql-line");
+		expect(busY).toBeGreaterThanOrEqual(pillY + pillBox + token("--lk-w-hot"));
+	} finally {
+		store.close();
+		rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("a desktop queue keeps its place and links stay on the hub curve", async () => {
+	const dir = mkdtempSync(join(tmpdir(), "fleet-dashboard-links-desk-queue-"));
+	const store = new FleetStore(join(dir, "fleet.db"));
+	try {
+		store.putNode(node("solo"));
+		store.submit({
+			schemaVersion: 1, key: "desk-queue", caller: "fixture", repoId: "fixture",
+			baseCommit: "b".repeat(40), prompt: "fixture", required: {},
+		} as Parameters<FleetStore["submit"]>[0]);
+		const els = await renderDashboardFixture(getDashboardState(store), { width: 1280, height: 800 });
+		const world = els.get("world") as El;
+		const hub = els.get("hubnode") as El;
+		const label = world.children.find((el) => el.className === "ql");
+		expect(label).toBeDefined();
+		expect(world.children.some((el) => el.className === "ql pill")).toBe(false);
+		const hs = 1;
+		expect(parseFloat(label!.style.top)).toBeCloseTo(parseFloat(hub.style.top) + 150 / 2 * hs + 8, 5);
+		expect(linkPath(els as Map<string, El>, 0)).toMatch(/ Q[\d.-]+ [\d.-]+ /);
 	} finally {
 		store.close();
 		rmSync(dir, { recursive: true, force: true });

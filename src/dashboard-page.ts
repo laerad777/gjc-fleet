@@ -20,6 +20,7 @@ ${DASHBOARD_FONT_FACE_CSS}
 	/* one link per hub-node pair; its colors, widths and dash patterns live here only */
 	--lk-ok:#17b57e;--lk-wait:#f0a52a;--lk-unk:#b3b7cf;--lk-down:#c3c6da;
 	--lk-w:1.6;--lk-w-hot:2.8;--lk-dash-down:2 7;--lk-dash-go:4 5;--lk-pulse-dur:.9s;
+	--ql-border:1px;--ql-pad-y:8px;--ql-line:14px;
 	/* 4px-base spacing scale; header/map-chrome gaps and margins pick from these tokens. */
 	--sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;--sp-5:20px;--sp-6:24px;
 	--sai-b:env(safe-area-inset-bottom,0px);
@@ -610,8 +611,9 @@ header .lease{margin-top:5px;padding:6px 8px}
 #world.gr .q{display:none}
 #world.gr #links path.fl,#world.gr #links path.draw{display:none}
 /* queue summary: one tappable pill under the hub instead of orbiting markers */
-.ql.pill{pointer-events:auto;cursor:pointer;white-space:nowrap;padding:8px 14px;border-radius:999px;background:var(--panel-hi);
-	border:1px solid var(--line-hi);color:var(--sub);font-size:11px;letter-spacing:.1em;box-shadow:none}
+.ql.pill{pointer-events:auto;cursor:pointer;white-space:nowrap;padding:var(--ql-pad-y) 14px;border-radius:999px;background:var(--panel-hi);
+	border:var(--ql-border) solid var(--line-hi);color:var(--sub);font-size:11px;line-height:var(--ql-line);
+	letter-spacing:.1em;box-shadow:none}
 /* node filter bar: chips wrap to a second row so none is clipped; 44px touch height (labels shortened in <=480px) */
 #fbar{max-width:100%}
 .fchip{min-height:44px;flex:none}
@@ -1689,8 +1691,9 @@ ${'<div class="grab" id="grab" role="button" tabindex="0" aria-label="Resize det
 		var rows=Math.ceil(N/cols);
 		var trunkY=hy+52*HS,busY=(trunkY+gy)/2;
 		if(V.queue.length){
-			var pillTop=hy+HUBBOX/2*HS+6,pillBox=1+8+11+8+1,stroke=1.6;
-			busY=Math.max(gy,pillTop+pillBox+stroke);
+			var pillTop=hy+HUBBOX/2*HS+6;
+			var pillBox=grTok('--ql-border',1)*2+grTok('--ql-pad-y',8)*2+grTok('--ql-line',14);
+			busY=Math.max(gy,pillTop+pillBox+grTok('--lk-w-hot',2.8));
 		}
 		GRL={gx:gx,cellW:cellW,cols:cols,gap:gap,busY:busY};
 		CB={x0:gx-12,y0:R.y0-4,x1:gx+gw+12,y1:gy+(rows-1)*cellH+cellH-gap+8};
