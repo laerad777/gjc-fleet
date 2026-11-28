@@ -83,7 +83,7 @@ Jobs:
 - `security` runs on `ubuntu-latest`: `bun scripts/privacy-scan.ts`, `bun run license:check`, then a secret scan of the pull request commits that never prints what it finds.
 - On docs-only changes, `docs` runs `bun test test/export-public.test.ts` to check release documentation and its workflow contract.
 - Otherwise, `test` runs on `ubuntu-latest` and `macos-latest`,
-  and the separate `windows` job runs on `windows-latest` as three parallel shards.
+  and the separate `windows` job runs on `windows-latest` as five shards.
   The Ubuntu and macOS jobs run `git --version`, `bun install --frozen-lockfile`, and `bun test test`.
   Each Windows shard runs `git --version` and `bun install --frozen-lockfile`,
   then `bun test test --shard="${{ matrix.shard }}/5"`. Bun sorts the test files
