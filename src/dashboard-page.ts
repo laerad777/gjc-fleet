@@ -1344,7 +1344,15 @@ ${'<div class="grab" id="grab" role="button" tabindex="0" aria-label="Resize det
 	function ctrl(i){var p=pos[V.units[i].id],cx=HUBP.x,cy=HUBP.y;if(MOB)return {x:(cx+p.x)/2,y:(cy+p.y)/2};return {x:(cx+p.x)/2,y:(cy+p.y)/2-((p.y>cy)?-30:30)}}
 	function r1(v){return Math.round(v*10)/10}
 	/* The one link of a hub-node pair: the shared hub-to-node curve, trimmed so the stroke starts outside the hub core and ends at the node orb edge. */
+	/* Phone grid: trunk to a bus, then a gutter lane left of the node column, so no link crosses another node. */
+	function gridLinkD(i){
+		var p=pos[V.units[i].id],h=HUBP,g=GRL,row=Math.floor(i/g.cols);
+		var laneX=r1(g.gx+(i%g.cols)*g.cellW-g.gap/2),y0=r1(h.y+52*HS);
+		if(row===0)return 'M'+r1(h.x)+' '+y0+' V'+r1(g.busY)+' H'+r1(p.x)+' V'+r1(p.y-NS/2);
+		return 'M'+r1(h.x)+' '+y0+' V'+r1(g.busY)+' H'+laneX+' V'+r1(p.y)+' H'+r1(p.x-NS/2);
+	}
 	function linkD(i){
+		if(MOB&&GRL)return gridLinkD(i);
 		var p=pos[V.units[i].id],c=ctrl(i),h=HUBP,hubClear=52*HS,nodeR=NS/2;
 		function pt(t){return {x:(1-t)*(1-t)*h.x+2*(1-t)*t*c.x+t*t*p.x,y:(1-t)*(1-t)*h.y+2*(1-t)*t*c.y+t*t*p.y}}
 		var a=0,b=1;
@@ -1652,6 +1660,7 @@ ${'<div class="grab" id="grab" role="button" tabindex="0" aria-label="Resize det
 	}
 	/* ---- phone grid: hub on top, cards in rows; every size is measured, nothing overlaps by construction ---- */
 	function grTok(name,fb){var v=parseFloat(getComputedStyle(stage).getPropertyValue(name));return isFinite(v)?v:fb}
+	var GRL=null;
 	function gridMobile(R){
 		var N=V.units.length,cx=W/2;
 		HS=N>12?.5:N>6?.56:.62;
@@ -1678,6 +1687,7 @@ ${'<div class="grab" id="grab" role="button" tabindex="0" aria-label="Resize det
 			var el=NEL[v.id];el.style.left=x+'px';el.style.top=y+'px';
 		});
 		var rows=Math.ceil(N/cols);
+		GRL={gx:gx,cellW:cellW,cols:cols,gap:gap,busY:(hy+52*HS+gy)/2};
 		CB={x0:gx-12,y0:R.y0-4,x1:gx+gw+12,y1:gy+(rows-1)*cellH+cellH-gap+8};
 		var kf=Math.min(1,(R.x1-R.x0)/(CB.x1-CB.x0),(R.y1-R.y0)/(CB.y1-CB.y0));
 		var cmx=(CB.x0+CB.x1)/2,cmy=(CB.y0+CB.y1)/2;
