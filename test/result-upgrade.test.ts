@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test";
 import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { Fleet, retainedResult } from "../src/fleet";
@@ -15,17 +15,17 @@ const PENDING_REVIEW = {
 	result: { verified: false, executionTerminal: true, exportIncomplete: { subject: expect.anything(), reviewDigest: expect.stringMatching(/^[a-f0-9]{64}$/), requiredAt: expect.any(String) } },
 };
 afterEach(async () => { for (const cleanup of cleanups.splice(0).reverse()) await cleanup(); });
-async function fixture(unknownVerifier = false, collectResult = true, settled: "completed_unverified" | "failed" = "completed_unverified", infoExclude?: string) {
+async function fixture(unknownVerifier = false, collectResult = true, settled: "completed_unverified" | "failed" = "completed_unverified", infoExclude?: string, cleanupList: (() => Promise<void>)[] = cleanups) {
 	const repo = await repositoryFixture("fleet-result-upgrade-");
 	// Operator rules are snapshotted when the workspace is prepared.
 	if (infoExclude !== undefined) {
 		await mkdir(join(repo.repo, ".git", "info"), { recursive: true });
 		await writeFile(join(repo.repo, ".git", "info", "exclude"), infoExclude);
 	}
-	cleanups.push(() => rm(repo.dir, { recursive: true, force: true }));
+	cleanupList.push(() => rm(repo.dir, { recursive: true, force: true }));
 	const db = join(repo.dir, "fleet.sqlite");
 	let store = new FleetStore(db);
-	cleanups.push(async () => store.close());
+	cleanupList.push(async () => store.close());
 	const state = join(repo.dir, "coordinator.json");
 	await writeFile(state, JSON.stringify({ calls: [] }));
 	store.putNode({ id: "local", os: process.platform, arch: process.arch,
@@ -96,22 +96,34 @@ test("excluded deliverables retain passing test evidence without verified task s
 	expect(f.store.task(f.task.id)).toMatchObject(PENDING_REVIEW);
 });
 
-test("unknown result-test effect after execution cannot rerun across reopen", async () => {
-	const f = await fixture();
-	const original = (f.fleet as any).node.bind(f.fleet);
-	(f.fleet as any).node = async (task: unknown, request: any) => {
-		const value = await original(task, request);
-		if (request.action === "test") throw Error("lost real verifier response");
-		return value;
-	};
-	await expect(f.fleet.result(f.task.id, f.argv)).rejects.toThrow("lost real verifier response");
-	f.reopen();
-	await expect(f.fleet.result(f.task.id, f.argv)).rejects.toMatchObject({ code: "TEST_UNKNOWN" });
-	await expect(f.fleet.result(f.task.id, ["different"])).rejects.toThrow();
-	expect(await readFile(f.counter, "utf8")).toBe("once\n");
-	expect(f.store.task(f.task.id)?.resultManifest).toEqual(f.original);
-	expect(f.store.task(f.task.id)?.result?.verified).toBe(false);
-}, 20_000);
+describe("unknown result-test effect after execution cannot rerun across reopen", () => {
+	// Cycle 1 (the lost verifier response) runs once; each test adds one cycle so each stays fast.
+	const local: (() => Promise<void>)[] = [];
+	let f: Awaited<ReturnType<typeof fixture>>;
+	beforeAll(async () => {
+		f = await fixture(false, true, "completed_unverified", undefined, local);
+		const original = (f.fleet as any).node.bind(f.fleet);
+		(f.fleet as any).node = async (task: unknown, request: any) => {
+			const value = await original(task, request);
+			if (request.action === "test") throw Error("lost real verifier response");
+			return value;
+		};
+		await expect(f.fleet.result(f.task.id, f.argv)).rejects.toThrow("lost real verifier response");
+		f.reopen();
+	});
+	afterAll(async () => { for (const cleanup of local.splice(0).reverse()) await cleanup(); });
+	test("a retained unknown effect reads back TEST_UNKNOWN, never a rerun", async () => {
+		await expect(f.fleet.result(f.task.id, f.argv)).rejects.toMatchObject({ code: "TEST_UNKNOWN" });
+	});
+	test("a different argv is refused and the verifier still ran exactly once", async () => {
+		await expect(f.fleet.result(f.task.id, ["different"])).rejects.toThrow();
+		expect(await readFile(f.counter, "utf8")).toBe("once\n");
+	});
+	test("the stored task keeps its original manifest and stays unverified", () => {
+		expect(f.store.task(f.task.id)?.resultManifest).toEqual(f.original);
+		expect(f.store.task(f.task.id)?.result?.verified).toBe(false);
+	});
+});
 
 test("verifier mutation cannot be attributed to cached artifact bytes", async () => {
 	const f = await fixture();
