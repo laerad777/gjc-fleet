@@ -330,6 +330,28 @@ test("spawnGitSync refuses a planted git under the repository even when PATH lea
 	expect(planted).not.toBe(realGit);
 });
 
+test("trustedPathValue skips only EACCES from one locate and still throws other errors", () => {
+	const denied = join(dir("locate-eacces"), "bin");
+	const broken = join(dir("locate-eio"), "bin");
+	const native = realpathSync.native.bind(realpathSync);
+	const spy = spyOn(realpathSync, "native").mockImplementation((target) => {
+		const text = String(target);
+		if (text.includes("locate-eacces")) throw Object.assign(new Error("denied"), { code: "EACCES" });
+		if (text.includes("locate-eio")) throw Object.assign(new Error("io"), { code: "EIO" });
+		return native(target);
+	});
+	try {
+		process.env.PATH = [denied, gitDir].join(DELIM);
+		expect(trustedPathValue()).toBe(gitDir);
+		process.env.PATH = [broken, gitDir].join(DELIM);
+		let code = "";
+		try { trustedPathValue(); } catch (error: any) { code = error?.code ?? ""; }
+		expect(code).toBe("EIO");
+	} finally {
+		spy.mockRestore();
+	}
+});
+
 const chmodEnforced = !WIN && process.getuid?.() !== 0;
 test.skipIf(!chmodEnforced)("trustedPathValue drops a PATH entry the process cannot traverse", () => {
 	const denied = dir("path-value-denied");

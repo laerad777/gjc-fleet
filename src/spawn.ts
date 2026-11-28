@@ -174,17 +174,6 @@ function candidates(program: string): Candidate[] {
 	return found;
 }
 
-/** An entry the process may not traverse holds no runnable program, so it is dropped, not fatal. */
-function isUnreadable(path: string): boolean {
-	try {
-		canonical(path);
-		return false;
-	} catch (error: any) {
-		if (error?.code === "EACCES") return true;
-		throw error;
-	}
-}
-
 export interface TrustContext {
 	/** Working directory the child will get; the parent's cwd when undefined. */
 	cwd?: string;
@@ -237,9 +226,18 @@ export function resolveProgram(program: string, context: TrustContext = {}): str
  */
 export function trustedPathValue(context: TrustContext = {}): string {
 	const untrusted = roots(context.untrusted ?? []);
-	return pathEntries()
-		.filter((e) => !isUnreadable(e) && !inside(locate(e), untrusted))
-		.join(WIN ? ";" : ":");
+	const kept: string[] = [];
+	for (const entry of pathEntries()) {
+		let location: Location;
+		try {
+			location = locate(entry);
+		} catch (error: any) {
+			if (error?.code === "EACCES") continue;
+			throw error;
+		}
+		if (!inside(location, untrusted)) kept.push(entry);
+	}
+	return kept.join(WIN ? ";" : ":");
 }
 
 /** Bun.spawn options plus worker-controlled trees for `resolveProgram`. */
