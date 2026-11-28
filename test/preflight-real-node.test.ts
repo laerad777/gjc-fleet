@@ -13,13 +13,15 @@ function evidence(patch: Partial<PreflightEvidence> = {}): PreflightEvidence {
 			{ role: "a", machineId: "machine-a", canonicalPath: "/pilot/a/fleet.sqlite", identity: { device: "da", inode: "1" } },
 			{ role: "b", machineId: "machine-b", canonicalPath: "/pilot/b/fleet.sqlite", identity: { device: "db", inode: "2" } },
 		],
-		productionDbs: [
-			{ machineId: "machine-a", canonicalPath: "/var/lib/gjc/fleet.sqlite", identity: { device: "da", inode: "9" } },
-			{ machineId: "machine-b", canonicalPath: "/var/lib/gjc/fleet.sqlite", identity: { device: "db", inode: "9" } },
+		productionChecks: [
+			{ machineId: "machine-a", checked: true, dbs: [{ canonicalPath: "/var/lib/gjc/fleet.sqlite", identity: { device: "da", inode: "9" } }] },
+			{ machineId: "machine-b", checked: true, dbs: [{ canonicalPath: "/var/lib/gjc/fleet.sqlite", identity: { device: "db", inode: "9" } }] },
 		],
 		peerOpen: [
-			{ from: "b", target: "a", canonicalPath: "/pilot/a/fleet.sqlite", identity: { device: "da", inode: "1" }, opened: false },
-			{ from: "a", target: "b", canonicalPath: "/pilot/b/fleet.sqlite", identity: { device: "db", inode: "2" }, opened: false },
+			{ from: "b", target: "a", runId: "run-1", canonicalPath: "/pilot/a/fleet.sqlite",
+				identity: { device: "da", inode: "1" }, opened: false },
+			{ from: "a", target: "b", runId: "run-1", canonicalPath: "/pilot/b/fleet.sqlite",
+				identity: { device: "db", inode: "2" }, opened: false },
 		],
 		restart: {
 			role: "a", machineId: "machine-a", canonicalPath: "/pilot/a/fleet.sqlite",
@@ -50,6 +52,27 @@ test("a canonical production path aborts", () => {
 	const live = evidence();
 	live.hosts[0]!.canonicalPath = "/var/lib/gjc/fleet.sqlite/";
 	expect(checkPreflight(live)).toBe("test DB is a production DB");
+});
+
+test("a host without a production check aborts", () => {
+	const unchecked = evidence();
+	unchecked.productionChecks = [unchecked.productionChecks[1]!];
+	expect(checkPreflight(unchecked)).toBe("production DB check is missing");
+});
+
+test("a host that checked and found no production DB passes", () => {
+	const none = evidence();
+	none.productionChecks = [
+		{ machineId: "machine-a", checked: true, dbs: [] },
+		{ machineId: "machine-b", checked: true, dbs: [] },
+	];
+	expect(checkPreflight(none)).toBeNull();
+});
+
+test("a peer observation from another run aborts", () => {
+	const other = evidence();
+	other.peerOpen[0]!.runId = "run-2";
+	expect(checkPreflight(other)).toBe("peer observation is not the same run");
 });
 
 test("a peer that opens the other DB aborts", () => {

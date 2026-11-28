@@ -10,15 +10,16 @@ export type HostEvidence = {
 	identity: FileIdentity;
 };
 
-export type ProductionDb = {
+export type ProductionCheck = {
 	machineId: string;
-	canonicalPath: string;
-	identity: FileIdentity;
+	checked: boolean;
+	dbs: { canonicalPath: string; identity: FileIdentity }[];
 };
 
 export type PeerOpenEvidence = {
 	from: HostRole;
 	target: HostRole;
+	runId: string;
 	canonicalPath: string;
 	identity: FileIdentity;
 	opened: boolean;
@@ -37,7 +38,7 @@ export type RestartEvidence = {
 export type PreflightEvidence = {
 	runId: string;
 	hosts: HostEvidence[];
-	productionDbs: ProductionDb[];
+	productionChecks: ProductionCheck[];
 	peerOpen: PeerOpenEvidence[];
 	restart: RestartEvidence | null;
 };
@@ -72,17 +73,24 @@ function isHost(value: unknown): value is HostEvidence {
 		&& typeof item.canonicalPath === "string" && isIdentity(item.identity);
 }
 
-function isProduction(value: unknown): value is ProductionDb {
+function isProductionDb(value: unknown): boolean {
 	if (!value || typeof value !== "object") return false;
-	const item = value as ProductionDb;
-	return typeof item.machineId === "string" && typeof item.canonicalPath === "string" && isIdentity(item.identity);
+	const item = value as { canonicalPath: string; identity: FileIdentity };
+	return typeof item.canonicalPath === "string" && isIdentity(item.identity);
+}
+
+function isProductionCheck(value: unknown): value is ProductionCheck {
+	if (!value || typeof value !== "object") return false;
+	const item = value as ProductionCheck;
+	return typeof item.machineId === "string" && typeof item.checked === "boolean"
+		&& Array.isArray(item.dbs) && item.dbs.every(isProductionDb);
 }
 
 function isPeer(value: unknown): value is PeerOpenEvidence {
 	if (!value || typeof value !== "object") return false;
 	const item = value as PeerOpenEvidence;
-	return isRole(item.from) && isRole(item.target) && typeof item.canonicalPath === "string"
-		&& typeof item.opened === "boolean" && isIdentity(item.identity);
+	return isRole(item.from) && isRole(item.target) && typeof item.runId === "string"
+		&& typeof item.canonicalPath === "string" && typeof item.opened === "boolean" && isIdentity(item.identity);
 }
 
 function host(evidence: PreflightEvidence, role: HostRole): HostEvidence | undefined {
@@ -101,15 +109,16 @@ export function checkPreflight(input: unknown): string | null {
 	if (!a || !b) return fail("hosts must be exactly A and B");
 	if (a.machineId.trim() === "" || b.machineId.trim() === "") return fail("machine id is empty");
 	if (a.machineId === b.machineId) return fail("machine ids are the same");
-	if (!Array.isArray(evidence.productionDbs) || evidence.productionDbs.length === 0
-		|| !evidence.productionDbs.every(isProduction)) {
-		return fail("production DB list is empty");
+	if (!Array.isArray(evidence.productionChecks) || !evidence.productionChecks.every(isProductionCheck)) {
+		return fail("production DB check is missing");
 	}
 	for (const cell of [a, b]) {
+		const checks = evidence.productionChecks.filter((item) => item.machineId === cell.machineId);
+		if (checks.length !== 1 || !checks[0]!.checked) return fail("production DB check is missing");
 		if (cell.canonicalPath.trim() === "") return fail("test DB path is empty");
 		const path = normalizePath(cell.canonicalPath);
-		const live = evidence.productionDbs.some((item) => item.machineId === cell.machineId
-			&& (normalizePath(item.canonicalPath) === path || sameFile(item.identity, cell.identity)));
+		const live = checks[0]!.dbs.some((item) => normalizePath(item.canonicalPath) === path
+			|| sameFile(item.identity, cell.identity));
 		if (live) return fail("test DB is a production DB");
 	}
 	if (a.machineId === b.machineId && (normalizePath(a.canonicalPath) === normalizePath(b.canonicalPath)
@@ -128,6 +137,7 @@ export function checkPreflight(input: unknown): string | null {
 		const sameTarget = normalizePath(record.canonicalPath) === normalizePath(target.canonicalPath)
 			&& sameFile(record.identity, target.identity);
 		if (!sameTarget) return fail("peer observation is not the target DB");
+		if (record.runId !== evidence.runId) return fail("peer observation is not the same run");
 		if (record.opened) return fail("peer opened the other host DB");
 	}
 	const restart = evidence.restart;

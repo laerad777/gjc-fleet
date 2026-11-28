@@ -29,10 +29,12 @@ A PASS is synthetic same-host cross-container evidence, not a real cross-host/Ta
 ## Real-node preflight
 
 `preflight-real-node.ts` reads one local evidence file and does not connect to a host.
-It aborts unless the machine ids differ, each test DB's host-observed canonical path
-and file identity are outside that host's production DB, each direction has one peer
-observation of the actual target file that failed to open, and A's restart record is
-the same run, the same file, and a start after an exit on the original host.
+It aborts unless the machine ids differ, each host has one production-DB check
+(an empty list is allowed only when that check was recorded), each test DB's
+host-observed canonical path and file identity are outside that check, each
+direction has one same-run peer observation of the actual target file that failed
+to open, and A's restart record is the same run, the same file, and a start after
+an exit on the original host.
 
 ## Evidence boundary
 
